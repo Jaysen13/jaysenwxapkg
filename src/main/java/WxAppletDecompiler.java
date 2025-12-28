@@ -1,3 +1,16 @@
+/*
+ * JaySenWxapkg - Burp Suite 微信小程序解包插件
+ *
+ * Copyright (C) 2025 JaySen (Jaysen13)
+ *
+ * 本软件采用 CC BY-NC-SA 4.0 许可证进行许可
+ * 禁止用于商业售卖，允许非商业使用、修改和分享，衍生品需采用相同许可证
+ *
+ * 作者：JaySen
+ * 邮箱：3147330392@qq.com
+ * GitHub：https://github.com/Jaysen13/jaysenwxapkg
+ * 许可证详情：参见项目根目录 LICENSE 文件
+ */
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
@@ -12,7 +25,7 @@ import java.util.concurrent.*;
 import java.util.regex.Pattern;
 
 /**
- * 微信小程序反编译 + 信息泄露检测（支持自定义正则/黑名单，结构化表格输出）
+ * 微信小程序反编译 + 信息泄露检测
  */
 public class WxAppletDecompiler {
     // ========== 基础配置（外部传入） ==========
@@ -23,6 +36,7 @@ public class WxAppletDecompiler {
     private Pattern customApiPattern;       // 自定义API提取正则
     private Map<String, Pattern> customSensitivePatterns; // 自定义敏感信息正则
     private Set<String> suffixBlacklist;    // URL后缀黑名单（仅用于URL过滤）
+    private Set<String> prefixBlacklist; // 接口前缀过滤黑名单
 
     // ========== 结构化结果容器 ==========
     private final List<AppInfo> appInfoList = new ArrayList<>();
@@ -37,7 +51,8 @@ public class WxAppletDecompiler {
             .readTimeout(10, TimeUnit.SECONDS)
             .build();
     private final ObjectMapper objectMapper = new ObjectMapper();
-
+    // AES解密工具实例
+    private final WxapkgAesDe aesDecompiler = new WxapkgAesDe();
     // 默认正则
     private static final Pattern DEFAULT_API_PATTERN = Config.DEFAULT_API_PATTERN;
     // 默认敏感信息正则
@@ -47,7 +62,7 @@ public class WxAppletDecompiler {
 
     // ========== 构造函数（初始化URL后缀黑名单） ==========
     public WxAppletDecompiler(String wxapkgFilePath, String outputDir, int threadNum,
-                              Pattern customApiPattern, Map<String, Pattern> customSensitivePatterns, Set<String> suffixBlacklist) {
+                              Pattern customApiPattern, Map<String, Pattern> customSensitivePatterns, Set<String> suffixBlacklist, Set<String> prefixBlacklist) {
         this.wxapkgFilePath = wxapkgFilePath;
         this.outputDir = outputDir;
         this.threadNum = threadNum;
@@ -63,6 +78,13 @@ public class WxAppletDecompiler {
             this.suffixBlacklist.addAll(suffixBlacklist); // 用户自定义完全生效
         } else {
             this.suffixBlacklist.addAll(DEFAULT_SUFFIX_BLACKLIST); // 无自定义则用默认
+        }
+        // 初始化接口前缀过滤黑名单
+        this.prefixBlacklist = new HashSet<>();
+        if (prefixBlacklist != null && !prefixBlacklist.isEmpty()) {
+            this.prefixBlacklist.addAll(prefixBlacklist);
+        } else {
+            this.prefixBlacklist.addAll(Config.DEFAULT_PREFIX_BLACKLIST);
         }
     }
 
@@ -103,23 +125,48 @@ public class WxAppletDecompiler {
             return;
         }
 
-        // 4. 执行解包
+        //  尝试直接执行解包
         addAppInfo("解包状态", "开始解包wxapkg文件：" + wxapkgFilePath);
         int fileCount = unpack(wxapkgFilePath, finalOutputDir, threadNum);
         if (fileCount == 0) {
-            addAppInfo("解包状态", "❌ 解包失败！");
-            return;
-        }
-        addAppInfo("解包结果", "✅ 解包完成！共解压 " + fileCount + " 个文件");
+            addAppInfo("解包状态", "❌ 直接解包失败，尝试AES解密后重试...");
+            try {
+                // 校验是否为加密的wxapkg
+                if (!aesDecompiler.isEncryptedWxapkg(wxapkgFilePath)) {
+                    addAppInfo("解包状态", "❌ 非加密wxapkg包，解包失败！");
+                    return;
+                }
+                // 生成临时解密文件
+                File srcFile = new File(wxapkgFilePath);
+                String tempFileName = srcFile.getName().replace(".wxapkg", "") + "_jaysentmp.wxapkg";
+                String tempDecryptedFile = new File(finalOutputDir, tempFileName).getAbsolutePath();
+                // 执行AES解密（使用提取的AppID作为wxid）
+                aesDecompiler.decrypt(appID, wxapkgFilePath, tempDecryptedFile);
+                addAppInfo("AES解密", "✅ 加密包解密成功：" + tempDecryptedFile);
 
-        // 5. 查询小程序信息
+                // 用解密后的文件重新解包
+                fileCount = unpack(tempDecryptedFile, finalOutputDir, threadNum);
+                if (fileCount == 0) {
+                    addAppInfo("解包状态", "❌ AES解密后解包仍失败！");
+                    return;
+                }
+                addAppInfo("解包结果", "✅ AES解密后解包完成！共解压 " + fileCount + " 个文件");
+            } catch (Exception e) {
+                addAppInfo("AES解密失败", "❌ " + e.getMessage());
+                return;
+            }
+        } else {
+            addAppInfo("解包结果", "✅ 直接解包完成！共解压 " + fileCount + " 个文件");
+        }
+
+        // 查询小程序信息
         Map<String, String> wxapkgInfo = queryAppInfo(appID);
         addAppInfo("小程序名称", wxapkgInfo.get("nickName"));
         addAppInfo("用户名", wxapkgInfo.get("userName"));
         addAppInfo("描述", wxapkgInfo.get("description"));
         addAppInfo("主体名称", wxapkgInfo.get("principalName"));
 
-        // 6. 信息泄露检测（不过滤文件，仅过滤URL）
+        // 信息泄露检测（不过滤文件，仅过滤URL）
         addAppInfo("检测状态", "🔍 开始执行信息泄露检测（所有文件都扫描）...");
         infoLeakDetect(finalOutputDir);
         addAppInfo("检测状态", "✅ 信息泄露检测完成！");
@@ -134,16 +181,16 @@ public class WxAppletDecompiler {
         try {
             decryptedData = Files.readAllBytes(wxapkgFile.toPath());
         } catch (IOException e) {
-            addAppInfo("错误信息", "❌ 读取wxapkg文件失败：" + e.getMessage());
+//            addAppInfo("错误信息", "❌ 读取wxapkg文件失败：" + e.getMessage());
             return 0;
         }
         if (decryptedData.length < 14 || decryptedData[0] != (byte) 0xBE || decryptedData[13] != (byte) 0xED) {
-            addAppInfo("错误信息", "❌ 解包失败：文件不是可用的wxapkg文件（头标记不匹配）");
+//            addAppInfo("错误信息", "❌ 解包失败：文件不是可用的wxapkg文件（头标记不匹配）");
             return 0;
         }
         long fileCount = readUnit(Arrays.copyOfRange(decryptedData, 14, 18));
         if (fileCount <= 0 || fileCount > Integer.MAX_VALUE) {
-            addAppInfo("错误信息", "❌ 解包失败：文件数量异常");
+//            addAppInfo("错误信息", "❌ 解包失败：文件数量异常");
             return 0;
         }
         List<FileMeta> fileList = new ArrayList<>();
@@ -153,7 +200,7 @@ public class WxAppletDecompiler {
             idx += 4;
             long nameLen = readUnit(nameLenByte);
             if (nameLen > 10485760) {
-                addAppInfo("错误信息", "❌ 解包失败：文件名长度异常");
+//                addAppInfo("错误信息", "❌ 解包失败：文件名长度异常");
                 return 0;
             }
             byte[] nameBytes = Arrays.copyOfRange(decryptedData, idx, idx + (int) nameLen);
@@ -311,19 +358,14 @@ public class WxAppletDecompiler {
                         }
 
                         boolean needFilter = false;
-                        // 过滤前端路径
-                        if (url.startsWith("/pages/")
-                                || url.startsWith("/components/")
-                                || url.startsWith("/static/")
-                                || url.startsWith("/uni_modules/")
-                                || url.startsWith("pages/")
-                                || url.startsWith("components/")
-                                || url.startsWith("static/")
-                                || url.startsWith("uni_modules/")
-                        ) {
-                            needFilter = true;
+                        //过滤api前端路径
+                        for (String prefix : prefixBlacklist) {
+                            if (url.contains(prefix)) {
+                                needFilter = true;
+                                break;
+                            }
                         }
-                        // 无参数URL：过滤黑名单后缀（仅URL层面过滤，不影响文件扫描）
+                        // 无参数URL：过滤黑名单后缀
                         if (!needFilter && !url.contains("?")) {
                             String urlSuffix = getUrlSuffix(url);
                             if (!urlSuffix.isEmpty() && suffixBlacklist.contains(urlSuffix)) {
@@ -370,7 +412,7 @@ public class WxAppletDecompiler {
         return cleanUrl.substring(lastDotIndex + 1).toLowerCase().replace(".", "");
     }
     // 小程序信息添加UI
-    private void addAppInfo(String key, String value) {
+    public void addAppInfo(String key, String value) {
         appInfoList.add(new AppInfo(key, value));
     }
     // 清除文件

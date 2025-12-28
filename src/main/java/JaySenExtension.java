@@ -1,3 +1,16 @@
+/*
+ * JaySenWxapkg - Burp Suite 微信小程序解包插件
+ *
+ * Copyright (C) 2025 JaySen (Jaysen13)
+ *
+ * 本软件采用 CC BY-NC-SA 4.0 许可证进行许可
+ * 禁止用于商业售卖，允许非商业使用、修改和分享，衍生品需采用相同许可证
+ *
+ * 作者：JaySen
+ * 邮箱：3147330392@qq.com
+ * GitHub：https://github.com/Jaysen13/jaysenwxapkg
+ * 许可证详情：参见项目根目录 LICENSE 文件
+ */
 import burp.api.montoya.BurpExtension;
 import burp.api.montoya.MontoyaApi;
 
@@ -16,9 +29,9 @@ public class JaySenExtension implements BurpExtension {
                                   |__|/ \\|__|                                                                               \s
                 
                 Author: jaysen
-                Github: https://github.com/Jaysen13/jaysenscan
-                Gitee: https://gitee.com/qiudaoyu_liao/jaysenscan
-                Version: V1.1
+                Github: https://github.com/Jaysen13/jaysenwxapkg
+                Gitee: https://gitee.com/qiudaoyu_liao/jaysenwxapkg
+                Version: V1.0
                 """);
         // 注册标签页面
         JaySenSuiteTab jaysenSuiteTab = new JaySenSuiteTab();

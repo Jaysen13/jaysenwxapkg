@@ -1,3 +1,16 @@
+/*
+ * JaySenWxapkg - Burp Suite 微信小程序解包插件
+ *
+ * Copyright (C) 2025 JaySen (Jaysen13)
+ *
+ * 本软件采用 CC BY-NC-SA 4.0 许可证进行许可
+ * 禁止用于商业售卖，允许非商业使用、修改和分享，衍生品需采用相同许可证
+ *
+ * 作者：JaySen
+ * 邮箱：3147330392@qq.com
+ * GitHub：https://github.com/Jaysen13/jaysenwxapkg
+ * 许可证详情：参见项目根目录 LICENSE 文件
+ */
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import java.io.File;
@@ -25,25 +38,31 @@ public class Config {
         DEFAULT_SENSITIVE_PATTERNS.put("IP地址", Pattern.compile("^(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])$"));
         DEFAULT_SENSITIVE_PATTERNS.put("车牌", Pattern.compile("^[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼使领A-Z]{1}[A-Z]{1}[A-Z0-9]{4}[A-Z0-9挂学警港澳]{1}$"));
     }
+    // 默认API黑名单
+    public static final Set<String> DEFAULT_PREFIX_BLACKLIST = new HashSet<>(Arrays.asList(
+            "pages/", "components/", "static/", "uni_modules/","uview-ui/","uview-plus/","package/"
+    ));
 
-    // 默认URL后缀黑名单（仅用于过滤无参数的无用URL）
+    // 默认API后缀黑名单
     static Set<String> DEFAULT_SUFFIX_BLACKLIST = new HashSet<>(Arrays.asList(
-            "js", "jpg", "png", "jpeg", "gif", "svg", "wxml", "wxss", "json", "html"
+            "js", "jpg", "png", "jpeg", "gif", "svg", "wxml", "wxss"
     ));
     // ========== 配置实体类（封装UI传入的参数） ==========
     public static class SavedConfig {
         private String apiRegex; // API提取正则字符串
         private Map<String, String> sensitiveRegexMap; // 敏感信息正则（类型:正则）
         private Set<String> suffixBlacklist; // 后缀黑名单
+        private Set<String> prefixBlacklist; // 前缀黑名单
 
         // 空构造（Jackson反序列化需要）
         public SavedConfig() {}
 
         // 带参构造（UI传入）
-        public SavedConfig(String apiRegex, Map<String, String> sensitiveRegexMap, Set<String> suffixBlacklist) {
+        public SavedConfig(String apiRegex, Map<String, String> sensitiveRegexMap, Set<String> suffixBlacklist,Set<String> prefixBlacklist) {
             this.apiRegex = apiRegex;
             this.sensitiveRegexMap = sensitiveRegexMap;
             this.suffixBlacklist = suffixBlacklist;
+            this.prefixBlacklist = prefixBlacklist;
         }
 
         // Getter & Setter
@@ -53,8 +72,31 @@ public class Config {
         public void setSensitiveRegexMap(Map<String, String> sensitiveRegexMap) { this.sensitiveRegexMap = sensitiveRegexMap; }
         public Set<String> getSuffixBlacklist() { return suffixBlacklist; }
         public void setSuffixBlacklist(Set<String> suffixBlacklist) { this.suffixBlacklist = suffixBlacklist; }
+        public Set<String> getPrefixBlacklist() { return prefixBlacklist; }
+        public void setPrefixBlacklist(Set<String> prefixBlacklist) { this.prefixBlacklist = prefixBlacklist; }
     }
 
+    // 将用户输入的逗号分隔字符串转为前缀黑名单Set
+    public static Set<String> parsePrefixTextToSet(String text) {
+        Set<String> set = new HashSet<>();
+        if (text == null || text.trim().isEmpty()) {
+            return set;
+        }
+        String[] items = text.trim().split(",");
+        for (String item : items) {
+            String trimItem = item.trim();
+            if (!trimItem.isEmpty()) {
+                set.add(trimItem);
+            }
+        }
+        return set;
+    }
+    public static String convertPrefixSetToText(Set<String> set) {
+        if (set == null || set.isEmpty()) {
+            return "";
+        }
+        return String.join(",", set);
+    }
 
     /**
      * 保存配置到JSON文件（联动UI，接收自定义参数）
@@ -63,7 +105,7 @@ public class Config {
      * @param customSuffixBlacklist UI输入的后缀黑名单（空则用默认）
      * @throws IOException 保存异常
      */
-    public static void saveConfigFile(String customApiRegex, Map<String, String> customSensitiveRegexMap, Set<String> customSuffixBlacklist) throws IOException {
+    public static void saveConfigFile(String customApiRegex, Map<String, String> customSensitiveRegexMap, Set<String> customSuffixBlacklist,Set<String> customprefixBlacklist) throws IOException {
         // 1. 动态拼接路径：C:/Users/{USER}/.burp/jaysenwxapkg.json
         String userName = System.getProperty("user.name");
         String configPath = String.format("C:/Users/%s/.burp/jaysenwxapkg.json", userName);
@@ -87,7 +129,7 @@ public class Config {
                 ? DEFAULT_SUFFIX_BLACKLIST : customSuffixBlacklist;
 
         // 4. 封装为配置实体
-        SavedConfig savedConfig = new SavedConfig(finalApiRegex, finalSensitiveMap, finalSuffixBlacklist);
+        SavedConfig savedConfig = new SavedConfig(finalApiRegex, finalSensitiveMap, finalSuffixBlacklist,customprefixBlacklist);
 
         // 5. Jackson序列化为格式化JSON
         ObjectMapper objectMapper = new ObjectMapper();
@@ -96,7 +138,6 @@ public class Config {
 
         // 6. 写入文件（UTF-8避免中文乱码）
         Files.write(Paths.get(configPath), jsonContent.getBytes(StandardCharsets.UTF_8));
-        System.out.println("✅ 配置已自动保存到：" + configPath);
     }
 
     // ========== 核心：加载配置（初始化UI时读取） ==========
@@ -115,7 +156,7 @@ public class Config {
             if (!configFile.exists()) {
                 Map<String, String> defaultSensitiveMap = DEFAULT_SENSITIVE_PATTERNS.entrySet().stream()
                         .collect(HashMap::new, (m, e) -> m.put(e.getKey(), e.getValue().pattern()), HashMap::putAll);
-                return new SavedConfig(DEFAULT_API_PATTERN.pattern(), defaultSensitiveMap, DEFAULT_SUFFIX_BLACKLIST);
+                return new SavedConfig(DEFAULT_API_PATTERN.pattern(), defaultSensitiveMap, DEFAULT_SUFFIX_BLACKLIST,DEFAULT_PREFIX_BLACKLIST);
             }
 
             // 3. 读取并反序列化JSON
@@ -124,10 +165,9 @@ public class Config {
 
         } catch (Exception e) {
             // 解析失败 → 返回默认配置
-            System.err.println("⚠️ 加载配置失败，使用默认值：" + e.getMessage());
             Map<String, String> defaultSensitiveMap = DEFAULT_SENSITIVE_PATTERNS.entrySet().stream()
                     .collect(HashMap::new, (m, e2) -> m.put(e2.getKey(), e2.getValue().pattern()), HashMap::putAll);
-            return new SavedConfig(DEFAULT_API_PATTERN.pattern(), defaultSensitiveMap, DEFAULT_SUFFIX_BLACKLIST);
+            return new SavedConfig(DEFAULT_API_PATTERN.pattern(), defaultSensitiveMap, DEFAULT_SUFFIX_BLACKLIST,DEFAULT_PREFIX_BLACKLIST);
         }
     }
 

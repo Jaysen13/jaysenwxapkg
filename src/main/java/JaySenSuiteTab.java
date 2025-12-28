@@ -1,3 +1,16 @@
+/*
+ * JaySenWxapkg - Burp Suite 微信小程序解包插件
+ *
+ * Copyright (C) 2025 JaySen (Jaysen13)
+ *
+ * 本软件采用 CC BY-NC-SA 4.0 许可证进行许可
+ * 禁止用于商业售卖，允许非商业使用、修改和分享，衍生品需采用相同许可证
+ *
+ * 作者：JaySen
+ * 邮箱：3147330392@qq.com
+ * GitHub：https://github.com/Jaysen13/jaysenwxapkg
+ * 许可证详情：参见项目根目录 LICENSE 文件
+ */
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -24,6 +37,7 @@ public class JaySenSuiteTab {
     private JTextArea apiRegexArea;         // API提取正则
     private JTextArea sensitiveRegexArea;   // 敏感信息正则
     private JTextField suffixBlacklistField;// 后缀黑名单
+    private JTextField prefixBlacklistField; // 接口前缀过滤黑名单
 
     // ========== 核心方法：返回UI组件 ==========
     public Component getUiComponent() {
@@ -150,7 +164,9 @@ public class JaySenSuiteTab {
             // 解析后缀黑名单
             String suffixText = suffixBlacklistField.getText().trim();
             suffixBlacklist = Config.parseSuffixTextToSet(suffixText);
-
+            // 解析前缀黑名单
+            String prefixText = prefixBlacklistField.getText().trim();
+            Set<String> prefixBlacklist = Config.parsePrefixTextToSet(prefixText);
             // 第五步：清空历史结果
             ((DefaultTableModel) appInfoTable.getModel()).setRowCount(0);
             ((DefaultTableModel) apiTable.getModel()).setRowCount(0);
@@ -170,7 +186,8 @@ public class JaySenSuiteTab {
                                 5,
                                 finalCustomApiPattern,
                                 customSensitivePatterns,
-                                finalSuffixBlacklist
+                                finalSuffixBlacklist,
+                                prefixBlacklist
                         );
                         decompiler.execute();
                         publish(decompiler);
@@ -319,9 +336,16 @@ public class JaySenSuiteTab {
         sensitiveRegexArea.getDocument().addDocumentListener(new ConfigChangeListener());
         sensitiveRegexPanel.add(new JScrollPane(sensitiveRegexArea), BorderLayout.CENTER);
 
-        // 3. 后缀黑名单配置（初始化+添加修改监听）
+        // 3. 接口前缀过滤黑名单配置
+        JPanel prefixBlackPanel = new JPanel(new BorderLayout());
+        prefixBlackPanel.setBorder(BorderFactory.createTitledBorder("接口关键词过滤黑名单（主要过滤前端文件路径，逗号分隔，如：/pages,/components）"));
+        prefixBlacklistField = new JTextField(Config.convertPrefixSetToText(savedConfig.getPrefixBlacklist())); // 加载保存的配置
+        prefixBlacklistField.getDocument().addDocumentListener(new ConfigChangeListener()); // 自动保存监听
+        prefixBlackPanel.add(prefixBlacklistField, BorderLayout.CENTER);
+
+        // 4. 后缀黑名单配置（初始化+添加修改监听）
         JPanel suffixBlackPanel = new JPanel(new BorderLayout());
-        suffixBlackPanel.setBorder(BorderFactory.createTitledBorder("接口后缀黑名单（逗号分隔，如：js,wxml,wxss）"));
+        suffixBlackPanel.setBorder(BorderFactory.createTitledBorder("接口后缀过滤（逗号分隔，如：js,wxml,wxss）"));
         suffixBlacklistField = new JTextField(Config.convertSuffixSetToText(savedConfig.getSuffixBlacklist())); // 加载保存的配置
         // 添加修改监听：内容变化自动保存
         suffixBlacklistField.getDocument().addDocumentListener(new ConfigChangeListener());
@@ -335,6 +359,8 @@ public class JaySenSuiteTab {
         rightPanel.add(apiRegexPanel);
         rightPanel.add(Box.createVerticalStrut(15));
         rightPanel.add(sensitiveRegexPanel);
+        rightPanel.add(Box.createVerticalStrut(15));
+        rightPanel.add(prefixBlackPanel);
         rightPanel.add(Box.createVerticalStrut(15));
         rightPanel.add(suffixBlackPanel);
 
@@ -362,11 +388,11 @@ public class JaySenSuiteTab {
             String apiRegex = apiRegexArea.getText().trim();
             Map<String, String> sensitiveMap = Config.parseSensitiveTextToMap(sensitiveRegexArea.getText().trim());
             Set<String> suffixSet = Config.parseSuffixTextToSet(suffixBlacklistField.getText().trim());
+            Set<String> prefixSet = Config.parsePrefixTextToSet(prefixBlacklistField.getText().trim());
 
             // 2. 调用Config保存方法
-            Config.saveConfigFile(apiRegex, sensitiveMap, suffixSet);
+            Config.saveConfigFile(apiRegex, sensitiveMap, suffixSet,prefixSet);
         } catch (Exception e) {
-            System.err.println("⚠️ 自动保存配置失败：" + e.getMessage());
             // 静默失败，不弹框干扰用户
         }
     }
