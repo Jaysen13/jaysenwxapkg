@@ -11,6 +11,8 @@
  * GitHub：https://github.com/Jaysen13/jaysenwxapkg
  * 许可证详情：参见项目根目录 LICENSE 文件
  */
+import burp.api.montoya.MontoyaApi;
+
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -38,7 +40,10 @@ public class JaySenSuiteTab {
     private JTextArea sensitiveRegexArea;   // 敏感信息正则
     private JTextField suffixBlacklistField;// 后缀黑名单
     private JTextField prefixBlacklistField; // 接口前缀过滤黑名单
-
+    MontoyaApi montoyaApi;
+    public JaySenSuiteTab(MontoyaApi montoyaApi) {
+        this.montoyaApi = montoyaApi;
+    }
     // ========== 核心方法：返回UI组件 ==========
     public Component getUiComponent() {
         // 1. 先加载保存的配置（初始化UI用）
@@ -101,7 +106,17 @@ public class JaySenSuiteTab {
                 folderPathField.setForeground(Color.BLACK);
             }
         });
-
+        // 添加打开文件功能
+        JButton openBrowserBtn = new JButton("打开文件浏览器");
+        openBrowserBtn.setBackground(new Color(0, 114, 187));
+        openBrowserBtn.setForeground(Color.WHITE);
+        openBrowserBtn.setBorderPainted(false);
+        openBrowserBtn.setFocusPainted(false);
+        openBrowserBtn.setEnabled(false); // 初始不可用（反编译后启用）
+        openBrowserBtn.addActionListener(e1 -> {
+            String outputDir = System.getProperty("user.home") + File.separator +".burp" + File.separator + "JaySenWxapkgOutput";
+            new WxapkgFileBrowser(outputDir,montoyaApi).setVisible(true);
+        });
         // 解析按钮（核心：先保存配置，再解析）
         JButton parseBtn = new JButton("批量解析所有wxapkg");
         parseBtn.setBackground(new Color(0, 114, 187));
@@ -232,6 +247,8 @@ public class JaySenSuiteTab {
                             "完成",
                             JOptionPane.INFORMATION_MESSAGE
                     );
+                    // 启用文件浏览器按钮
+                    openBrowserBtn.setEnabled(true);
                 }
             }.execute();
         });
@@ -241,6 +258,7 @@ public class JaySenSuiteTab {
         funcPanel.add(folderPathField);
         funcPanel.add(selectFolderBtn);
         funcPanel.add(parseBtn);
+        funcPanel.add(openBrowserBtn);
 
         // 左侧结果展示区（标签页+表格）
         JTabbedPane resultTabbedPane = new JTabbedPane();

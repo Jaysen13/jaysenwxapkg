@@ -31,10 +31,10 @@ public class JaySenExtension implements BurpExtension {
                 Author: jaysen
                 Github: https://github.com/Jaysen13/jaysenwxapkg
                 Gitee: https://gitee.com/qiudaoyu_liao/jaysenwxapkg
-                Version: V1.0
+                Version: V1.1
                 """);
         // 注册标签页面
-        JaySenSuiteTab jaysenSuiteTab = new JaySenSuiteTab();
+        JaySenSuiteTab jaysenSuiteTab = new JaySenSuiteTab(montoyaApi);
         montoyaApi.userInterface().registerSuiteTab("JaySenWxapkg", jaysenSuiteTab.getUiComponent());
     }
 }

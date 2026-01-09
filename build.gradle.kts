@@ -3,6 +3,7 @@ plugins {
 }
 
 repositories {
+    maven { url = uri("https://maven.aliyun.com/repository/public/") }
     mavenCentral()
 }
 
@@ -10,6 +11,10 @@ dependencies {
     compileOnly("net.portswigger.burp.extensions:montoya-api:2025.8")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.16.1")
+
+    // 修正fastjson的groupId（关键）
+    implementation("com.alibaba:fastjson:2.0.45")
+    testImplementation("junit:junit:4.13.2")
 }
 
 tasks.withType<JavaCompile> {
