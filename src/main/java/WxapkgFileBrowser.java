@@ -30,7 +30,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 独立文件浏览器窗口（支持搜索高亮+匹配数量+下一个定位，修复相对路径显示）
+ * 独立文件浏览器窗口（支持搜索高亮+匹配数量+下一个定位，修复相对路径显示，新增高亮左右居中）
  */
 public class WxapkgFileBrowser extends JFrame {
     private JTree fileTree;
@@ -154,7 +154,8 @@ public class WxapkgFileBrowser extends JFrame {
         matchControlPanel.add(nextMatchBtn);
 
         // 组装内容预览区（内容+控制区）
-        contentPanel.add(new JScrollPane(contentArea), BorderLayout.CENTER);
+        JScrollPane contentScroll = new JScrollPane(contentArea); // 单独定义滚动面板，方便后续获取
+        contentPanel.add(contentScroll, BorderLayout.CENTER);
         contentPanel.add(matchControlPanel, BorderLayout.SOUTH);
         contentPanel.setBorder(BorderFactory.createTitledBorder("📄 文件内容"));
         rightSplit.setTopComponent(contentPanel);
@@ -173,7 +174,67 @@ public class WxapkgFileBrowser extends JFrame {
         add(searchPanel, BorderLayout.NORTH);
         add(contentSplit, BorderLayout.CENTER);
     }
-    // 新增：跳转到上一个匹配
+
+    // ===================== 修复：左右居中滚动工具方法（核心） =====================
+    /**
+     * 将目标位置的文本在JTextPane中左右居中显示（方便查看上下文）
+     * @param textPane 目标文本面板
+     * @param targetPos 目标字符位置
+     */
+    private void scrollToCenterHorizontally(JTextPane textPane, int targetPos) {
+        try {
+            // 1. 获取目标位置对应的视图矩形（匹配文本的边界）
+            Rectangle targetRect = textPane.modelToView(targetPos);
+            if (targetRect == null) return;
+
+            // 2. 安全获取JViewport（两种方式：推荐方式1，兼容所有场景）
+            JViewport viewport = null;
+            // 方式1：从JScrollPane中直接获取视口（更稳定，避免父容器层级错误）
+            Container parent = textPane.getParent();
+            if (parent instanceof JViewport) {
+                viewport = (JViewport) parent;
+            } else {
+                // 方式2：遍历父容器，找到JViewport（兜底方案）
+                while (parent != null && !(parent instanceof JViewport)) {
+                    parent = parent.getParent();
+                }
+                if (parent instanceof JViewport) {
+                    viewport = (JViewport) parent;
+                }
+            }
+
+            // 无有效视口，使用默认滚动
+            if (viewport == null) {
+                textPane.scrollRectToVisible(targetRect);
+                return;
+            }
+
+            // 3. 获取视口大小和当前滚动位置
+            Rectangle viewportRect = viewport.getViewRect();
+            Point viewportPos = viewport.getViewPosition();
+
+            // 4. 计算左右居中偏移量：让匹配内容的中心 = 视口的中心
+            int targetCenterX = targetRect.x + targetRect.width / 2;
+            int viewportCenterX = viewportRect.width / 2;
+            int newViewportX = viewportPos.x + (targetCenterX - viewportCenterX);
+
+            // 5. 处理边界情况：避免滚动出文本范围（左不小于0，右不超过文本总宽度）
+            int textTotalWidth = textPane.getPreferredSize().width;
+            newViewportX = Math.max(0, newViewportX);
+            newViewportX = Math.min(newViewportX, textTotalWidth - viewportRect.width);
+
+            // 6. 保持垂直位置不变，只调整水平位置（左右居中），滚动到目标区域
+            viewport.setViewPosition(new Point(newViewportX, viewportPos.y));
+            textPane.scrollRectToVisible(targetRect);
+
+        } catch (BadLocationException e) {
+            // 异常时使用默认滚动逻辑
+            textPane.scrollRectToVisible(new Rectangle(targetPos, 0, 10, 20));
+            e.printStackTrace();
+        }
+    }
+
+    // 新增：跳转到上一个匹配（调用修复后的居中滚动方法）
     private void jumpToPrevMatch() {
         if (currentMatchPositions.isEmpty()) return;
 
@@ -181,16 +242,17 @@ public class WxapkgFileBrowser extends JFrame {
         currentMatchIndex = (currentMatchIndex - 1 + currentMatchPositions.size()) % currentMatchPositions.size();
         int targetPos = currentMatchPositions.get(currentMatchIndex);
 
-        // 定位+滚动
+        // 定位+滚动（调用修复后的居中方法）
         try {
             contentArea.setCaretPosition(targetPos);
-            contentArea.scrollRectToVisible(contentArea.modelToView(targetPos));
+            scrollToCenterHorizontally(contentArea, targetPos);
             // 更新“当前/总数”显示
             updateMatchLabel();
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
     // 新增：更新匹配标签显示（当前/总数）
     private void updateMatchLabel() {
         if (currentMatchPositions.isEmpty()) {
@@ -200,6 +262,7 @@ public class WxapkgFileBrowser extends JFrame {
             matchCountLabel.setText((currentMatchIndex + 1) + "/" + currentMatchPositions.size());
         }
     }
+
     // 加载文件树（仅修改此方法：跳过上级目录名，直接显示目录内容）
     private void loadFileTree(File rootDir) {
         if (rootDir == null || !rootDir.isDirectory()) {
@@ -255,7 +318,7 @@ public class WxapkgFileBrowser extends JFrame {
         }
     }
 
-    // 异步读取文件（修改：强制UTF-8编码 + 异常详细提示）
+    // 异步读取文件（修改：强制UTF-8编码 + 异常详细提示，调用修复后的居中滚动）
     private void loadSelectedFileContent() {
         // 切换文件时，重置匹配状态
         currentMatchPositions.clear();
@@ -337,18 +400,19 @@ public class WxapkgFileBrowser extends JFrame {
                         }
 
                         int matchCount = currentMatchPositions.size();
-                        matchCountLabel.setText("匹配数量：" + matchCount);
+                        // 新增：更新匹配标签为 1/总数 格式
+                        updateMatchLabel();
                         nextMatchBtn.setEnabled(matchCount > 0);
 
                         if (matchCount > 0) {
                             currentMatchIndex = 0;
                             int firstPos = currentMatchPositions.get(0);
                             contentArea.setCaretPosition(firstPos);
-                            contentArea.scrollRectToVisible(contentArea.modelToView(firstPos));
-                            // 新增：启用上/下按钮 + 更新显示
+                            // 调用修复后的居中滚动方法
+                            scrollToCenterHorizontally(contentArea, firstPos);
+                            // 新增：启用上/下按钮
                             prevMatchBtn.setEnabled(true);
                             nextMatchBtn.setEnabled(true);
-                            updateMatchLabel();
                         }
                     }
                 } catch (Exception e) {
@@ -359,7 +423,7 @@ public class WxapkgFileBrowser extends JFrame {
         }.execute();
     }
 
-    // 新增：跳转到下一个匹配
+    // 新增：跳转到下一个匹配（调用修复后的居中滚动方法）
     private void jumpToNextMatch() {
         if (currentMatchPositions.isEmpty()) return;
 
@@ -367,10 +431,10 @@ public class WxapkgFileBrowser extends JFrame {
         currentMatchIndex = (currentMatchIndex + 1) % currentMatchPositions.size();
         int targetPos = currentMatchPositions.get(currentMatchIndex);
 
-        // 定位+滚动到目标位置
+        // 定位+滚动到目标位置（调用修复后的居中方法）
         try {
             contentArea.setCaretPosition(targetPos);
-            contentArea.scrollRectToVisible(contentArea.modelToView(targetPos));
+            scrollToCenterHorizontally(contentArea, targetPos);
             // 更新“当前/总数”显示
             updateMatchLabel();
         } catch (Exception e) {
@@ -440,7 +504,7 @@ public class WxapkgFileBrowser extends JFrame {
         }
     }
 
-    // 跳转到搜索结果（保持不变）
+    // 跳转到搜索结果（保持不变，加载文件时自动居中）
     private void jumpToSearchResult() {
         String selectedResult = searchResultList.getSelectedValue();
         if (selectedResult == null || selectedResult.startsWith("未找到") || selectedResult.startsWith("搜索失败")) {
@@ -457,7 +521,7 @@ public class WxapkgFileBrowser extends JFrame {
         }
 
         locateFileInTree(targetFile);
-        loadSelectedFileContent(); // 加载文件时自动定位第一个匹配
+        loadSelectedFileContent(); // 加载文件时自动定位第一个匹配并居中
     }
 
     // 定位文件树节点（修改：从Entry中获取File对象）
@@ -518,5 +582,4 @@ public class WxapkgFileBrowser extends JFrame {
         textField.setText(placeholder);
         textField.setForeground(Color.GRAY);
     }
-
 }

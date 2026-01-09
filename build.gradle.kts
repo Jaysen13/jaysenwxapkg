@@ -23,7 +23,7 @@ tasks.withType<JavaCompile> {
     options.encoding = "UTF-8"
 }
 
-version = "1.0"
+version = "1.1"
 
 tasks.jar {
     val appName = "JaySenWxapkg"
