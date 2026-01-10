@@ -2,6 +2,8 @@
 
 > 支持微信最新版，可解**大部分微信小程序wxapkg包**，一键自动解密+批量解包+API接口提取+敏感数据泄露检测，Burp可视化操作，配置自动保存！
 
+[![GitHub 总下载量](https://img.shields.io/github/downloads/Jaysen13/jaysenwxapkg/total?label=GitHub总下载量&color=4CAF50)](https://github.com/Jaysen13/jaysenwxapkg/releases)[](https://github.com/Jaysen13/jaysenwxapkg)
+
 ![image-20251229001640463](./README.assets/image-20251229001640463.png)
 
 ## 📋 功能清单
@@ -45,6 +47,12 @@
 
 并且可以配置右边的过滤机制，过滤掉匹配到的前端路径，和图片等等
 
+成功反编译后可以点击**文件浏览功能**打开已编译后的文件
+
+![image-20260110134555416](./README.assets/image-20260110134555416.png)
+
+![image-20260110134630636](./README.assets/image-20260110134630636.png)
+
 ## 📝 配置示例
 ### 敏感信息正则示例
 ```
@@ -71,5 +79,21 @@ IP地址:^(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9
 
 ## 📞 联系作者
 - GitHub：[Jaysen13](https://github.com/Jaysen13)
+
 - 项目地址：[https://github.com/Jaysen13/jaysenwxapkg](https://github.com/Jaysen13/jaysenwxapkg)
+
 - 邮箱：3147330392@qq.com
+
+- 微信公众号：**凌霜雁安全志**
+
+  后续公众号会不定期分享网络安全类知识和工具推荐，欢迎关注~
+
+<img src="./README.assets/39cdc25985ea23f8f6b34992c5d73c08.jpg" alt="39cdc25985ea23f8f6b34992c5d73c08" style="zoom:33%;" />
+
+## ⭐ Star 历史趋势
+
+ 如果这个项目对你有帮助，欢迎点亮 Star 支持一下！ 您的start，我的动力
+
+<img src="./README.assets/image-20260110135348872.png" alt="image-20260110135348872" style="zoom: 50%;" />
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Jaysen13/jaysenwxapkg&type=Date)](https://star-history.com/#Jaysen13/jaysenwxapkg&Date)
