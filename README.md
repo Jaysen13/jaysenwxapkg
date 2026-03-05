@@ -1,10 +1,10 @@
 # 🔥 JaySenWxapkg - Burp微信小程序渗透测试利器
 
-> 支持微信最新版，可解**大部分微信小程序wxapkg包**，一键自动解密+批量解包+API接口提取+敏感数据泄露检测，Burp可视化操作，配置自动保存！
+> 支持微信最新版，可解**所有微信小程序wxapkg包**，一键自动解密+批量解包+API接口提取+敏感数据泄露检测，Burp可视化操作，配置自动保存！
 
 [![GitHub 总下载量](https://img.shields.io/github/downloads/Jaysen13/jaysenwxapkg/total?label=GitHub总下载量&color=4CAF50)](https://github.com/Jaysen13/jaysenwxapkg/releases)[](https://github.com/Jaysen13/jaysenwxapkg)
 
-![image-20251229001640463](./README.assets/image-20251229001640463.png)
+![image-20260305105205557](./README.assets/image-20260305105205557.png)
 
 ## 📋 功能清单
 | 功能模块         | 核心能力                                                     |
@@ -19,7 +19,7 @@
 
 ## 🛠️ 快速上手
 
-找到微信的小程序包生成路径，默认是
+找到微信的小程序包生成路径，默认是（最最新版4.1.7.57已变）
 
 `C:\Users\你的用户名\AppData\Roaming\Tencent\xwechat\radium\Applet\packages\`
 

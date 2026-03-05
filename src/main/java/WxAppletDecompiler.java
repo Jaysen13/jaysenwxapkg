@@ -314,10 +314,10 @@ public class WxAppletDecompiler {
                 addAppInfo("警告", "小程序 " + appid + " 未收录：" + msg);
                 return result;
             }
-            result.put("nickName", getJsonNodeValue(dataNode, "nickName", "未知小程序"));
-            result.put("userName", getJsonNodeValue(dataNode, "userName", ""));
+            result.put("nickName", getJsonNodeValue(dataNode, "nickname", "未知小程序"));
+            result.put("userName", getJsonNodeValue(dataNode, "username", ""));
             result.put("description", getJsonNodeValue(dataNode, "description", ""));
-            result.put("principalName", getJsonNodeValue(dataNode, "principalName", ""));
+            result.put("principalName", getJsonNodeValue(dataNode, "principal_name", ""));
         } catch (IOException e) {
             addAppInfo("警告", "查询小程序信息失败：" + e.getMessage());
         }

@@ -47,22 +47,27 @@ public class Config {
     static Set<String> DEFAULT_SUFFIX_BLACKLIST = new HashSet<>(Arrays.asList(
             "js", "jpg", "png", "jpeg", "gif", "svg", "wxml", "wxss"
     ));
+
+    // 默认打开的路径
+    static String DEFAULT_WXAPKGPATH = System.getProperty("user.home") + "\\AppData\\Roaming\\Tencent\\xwechat\\radium\\Applet\\packages\\";
+
     // ========== 配置实体类（封装UI传入的参数） ==========
     public static class SavedConfig {
         private String apiRegex; // API提取正则字符串
         private Map<String, String> sensitiveRegexMap; // 敏感信息正则（类型:正则）
         private Set<String> suffixBlacklist; // 后缀黑名单
         private Set<String> prefixBlacklist; // 前缀黑名单
-
+        private String wxapkgPath;
         // 空构造（Jackson反序列化需要）
         public SavedConfig() {}
 
         // 带参构造（UI传入）
-        public SavedConfig(String apiRegex, Map<String, String> sensitiveRegexMap, Set<String> suffixBlacklist,Set<String> prefixBlacklist) {
+        public SavedConfig(String apiRegex, Map<String, String> sensitiveRegexMap, Set<String> suffixBlacklist,Set<String> prefixBlacklist,String wxapkgPath) {
             this.apiRegex = apiRegex;
             this.sensitiveRegexMap = sensitiveRegexMap;
             this.suffixBlacklist = suffixBlacklist;
             this.prefixBlacklist = prefixBlacklist;
+            this.wxapkgPath = wxapkgPath;
         }
 
         // Getter & Setter
@@ -74,6 +79,8 @@ public class Config {
         public void setSuffixBlacklist(Set<String> suffixBlacklist) { this.suffixBlacklist = suffixBlacklist; }
         public Set<String> getPrefixBlacklist() { return prefixBlacklist; }
         public void setPrefixBlacklist(Set<String> prefixBlacklist) { this.prefixBlacklist = prefixBlacklist; }
+        public String getwxapkgPath() { return wxapkgPath;}
+        public void setWxapkgPath(String wxapkgPath) {this.wxapkgPath = wxapkgPath;}
     }
 
     // 将用户输入的逗号分隔字符串转为前缀黑名单Set
@@ -105,7 +112,7 @@ public class Config {
      * @param customSuffixBlacklist UI输入的后缀黑名单（空则用默认）
      * @throws IOException 保存异常
      */
-    public static void saveConfigFile(String customApiRegex, Map<String, String> customSensitiveRegexMap, Set<String> customSuffixBlacklist,Set<String> customprefixBlacklist) throws IOException {
+    public static void saveConfigFile(String customApiRegex, Map<String, String> customSensitiveRegexMap, Set<String> customSuffixBlacklist,Set<String> customprefixBlacklist,String wxapkgPath) throws IOException {
         // 1. 动态拼接路径：C:/Users/{USER}/.burp/jaysenwxapkg.json
         String userName = System.getProperty("user.name");
         String configPath = String.format("C:/Users/%s/.burp/jaysenwxapkg.json", userName);
@@ -124,12 +131,11 @@ public class Config {
                 ? DEFAULT_SENSITIVE_PATTERNS.entrySet().stream()
                 .collect(HashMap::new, (m, e) -> m.put(e.getKey(), e.getValue().pattern()), HashMap::putAll)
                 : customSensitiveRegexMap;
-
-        Set<String> finalSuffixBlacklist = (customSuffixBlacklist == null || customSuffixBlacklist.isEmpty())
-                ? DEFAULT_SUFFIX_BLACKLIST : customSuffixBlacklist;
+        Set<String> finalSuffixBlacklist = (customSuffixBlacklist == null || customSuffixBlacklist.isEmpty()) ? DEFAULT_SUFFIX_BLACKLIST : customSuffixBlacklist;
+        String finalwxapkgPath = (wxapkgPath == null || wxapkgPath.isEmpty()) ? DEFAULT_WXAPKGPATH : wxapkgPath;
 
         // 4. 封装为配置实体
-        SavedConfig savedConfig = new SavedConfig(finalApiRegex, finalSensitiveMap, finalSuffixBlacklist,customprefixBlacklist);
+        SavedConfig savedConfig = new SavedConfig(finalApiRegex, finalSensitiveMap, finalSuffixBlacklist,customprefixBlacklist,finalwxapkgPath);
 
         // 5. Jackson序列化为格式化JSON
         ObjectMapper objectMapper = new ObjectMapper();
@@ -156,7 +162,7 @@ public class Config {
             if (!configFile.exists()) {
                 Map<String, String> defaultSensitiveMap = DEFAULT_SENSITIVE_PATTERNS.entrySet().stream()
                         .collect(HashMap::new, (m, e) -> m.put(e.getKey(), e.getValue().pattern()), HashMap::putAll);
-                return new SavedConfig(DEFAULT_API_PATTERN.pattern(), defaultSensitiveMap, DEFAULT_SUFFIX_BLACKLIST,DEFAULT_PREFIX_BLACKLIST);
+                return new SavedConfig(DEFAULT_API_PATTERN.pattern(), defaultSensitiveMap, DEFAULT_SUFFIX_BLACKLIST,DEFAULT_PREFIX_BLACKLIST,DEFAULT_WXAPKGPATH);
             }
 
             // 3. 读取并反序列化JSON
@@ -167,7 +173,7 @@ public class Config {
             // 解析失败 → 返回默认配置
             Map<String, String> defaultSensitiveMap = DEFAULT_SENSITIVE_PATTERNS.entrySet().stream()
                     .collect(HashMap::new, (m, e2) -> m.put(e2.getKey(), e2.getValue().pattern()), HashMap::putAll);
-            return new SavedConfig(DEFAULT_API_PATTERN.pattern(), defaultSensitiveMap, DEFAULT_SUFFIX_BLACKLIST,DEFAULT_PREFIX_BLACKLIST);
+            return new SavedConfig(DEFAULT_API_PATTERN.pattern(), defaultSensitiveMap, DEFAULT_SUFFIX_BLACKLIST,DEFAULT_PREFIX_BLACKLIST,DEFAULT_WXAPKGPATH);
         }
     }
 

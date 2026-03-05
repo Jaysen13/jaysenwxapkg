@@ -40,6 +40,7 @@ public class JaySenSuiteTab {
     private JTextArea sensitiveRegexArea;   // 敏感信息正则
     private JTextField suffixBlacklistField;// 后缀黑名单
     private JTextField prefixBlacklistField; // 接口前缀过滤黑名单
+    private JTextField defaultWxapkgPathField; // Wxapkg默认打开路径
     MontoyaApi montoyaApi;
     public JaySenSuiteTab(MontoyaApi montoyaApi) {
         this.montoyaApi = montoyaApi;
@@ -92,13 +93,21 @@ public class JaySenSuiteTab {
             JFileChooser folderChooser = new JFileChooser();
             folderChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
             // 默认打开微信小程序缓存目录
-            String userHome = System.getProperty("user.home");
-            File defaultDir = new File(userHome + "\\AppData\\Roaming\\Tencent\\xwechat\\radium\\Applet\\packages\\");
-            if (defaultDir.exists() && defaultDir.isDirectory()) {
-                folderChooser.setCurrentDirectory(defaultDir);
-            } else {
-                folderChooser.setCurrentDirectory(new File(userHome));
+            String configDefaultPath = defaultWxapkgPathField.getText().trim();
+            File defaultDir = new File(configDefaultPath);
+            if (!defaultDir.exists() || !defaultDir.isDirectory()) {
+                // 配置路径无效时，回退到原默认路径
+                defaultDir = new File(System.getProperty("user.home") + "\\AppData\\Roaming\\Tencent\\xwechat\\radium\\Applet\\packages\\");
+                if (!defaultDir.exists()) {
+                    defaultDir = new File(System.getProperty("user.home"));
+                }
             }
+            folderChooser.setCurrentDirectory(defaultDir);
+//            if (defaultDir.exists() && defaultDir.isDirectory()) {
+//                folderChooser.setCurrentDirectory(defaultDir);
+//            } else {
+//                folderChooser.setCurrentDirectory(new File(System.getProperty("user.home")));
+//            }
             int result = folderChooser.showOpenDialog(leftPanel);
             if (result == JFileChooser.APPROVE_OPTION) {
                 File selectedFolder = folderChooser.getSelectedFile();
@@ -333,6 +342,17 @@ public class JaySenSuiteTab {
         configSep.setMaximumSize(new Dimension(Integer.MAX_VALUE, 2));
         configSep.setForeground(new Color(220, 220, 220));
         configSep.setAlignmentX(Component.CENTER_ALIGNMENT);
+        // 添加Wxapkg路径配置框
+        JPanel defaultPathPanel = new JPanel(new BorderLayout());
+        defaultPathPanel.setBorder(BorderFactory.createTitledBorder("wxapkg默认打开路径"));
+        // 加载保存的配置，无则用默认路径
+        String defaultPath = savedConfig.getwxapkgPath() != null
+                ? savedConfig.getwxapkgPath()
+                : System.getProperty("user.home") + "\\AppData\\Roaming\\Tencent\\xwechat\\radium\\Applet\\packages\\";
+        defaultWxapkgPathField = new JTextField(defaultPath);
+        // 添加自动保存监听
+        defaultWxapkgPathField.getDocument().addDocumentListener(new ConfigChangeListener());
+        defaultPathPanel.add(new JScrollPane(defaultWxapkgPathField), BorderLayout.CENTER);
 
         // 1. API提取正则配置（初始化+添加修改监听）
         JPanel apiRegexPanel = new JPanel(new BorderLayout());
@@ -374,6 +394,8 @@ public class JaySenSuiteTab {
         rightPanel.add(Box.createVerticalStrut(10));
         rightPanel.add(configSep);
         rightPanel.add(Box.createVerticalStrut(20));
+        rightPanel.add(defaultPathPanel);
+        rightPanel.add(Box.createVerticalStrut(15));
         rightPanel.add(apiRegexPanel);
         rightPanel.add(Box.createVerticalStrut(15));
         rightPanel.add(sensitiveRegexPanel);
@@ -407,9 +429,10 @@ public class JaySenSuiteTab {
             Map<String, String> sensitiveMap = Config.parseSensitiveTextToMap(sensitiveRegexArea.getText().trim());
             Set<String> suffixSet = Config.parseSuffixTextToSet(suffixBlacklistField.getText().trim());
             Set<String> prefixSet = Config.parsePrefixTextToSet(prefixBlacklistField.getText().trim());
+            String wxapkgPath = defaultWxapkgPathField.getText().trim();
 
             // 2. 调用Config保存方法
-            Config.saveConfigFile(apiRegex, sensitiveMap, suffixSet,prefixSet);
+            Config.saveConfigFile(apiRegex, sensitiveMap, suffixSet,prefixSet,wxapkgPath);
         } catch (Exception e) {
             // 静默失败，不弹框干扰用户
         }
