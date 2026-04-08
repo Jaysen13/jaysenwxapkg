@@ -23,6 +23,8 @@
 
 `C:\Users\你的用户名\AppData\Roaming\Tencent\xwechat\radium\Applet\packages\`
 
+`4.1.7.59`以后
+`C:\Users\你的用户名\AppData\Roaming\Tencent\xwechat\radium\users\微信UserId\applet\packages\`
 找不到的可以全局findsomething搜索一下packages
 
 ![image-20251229002003227](./README.assets/image-20251229002003227.png)
