@@ -495,7 +495,7 @@ public class WxapkgFileBrowser extends JFrame {
                         resultList.add(relativePath.toString() + " [匹配：" + keyword + "]");
                     }
                 } catch (UnsupportedEncodingException e) {
-                    montoyaApi.logging().logToOutput("文件" + file.getName() + "不支持UTF-8编码：" + e.getMessage());
+                    // montoyaApi.logging().logToOutput("文件" + file.getName() + "不支持UTF-8编码：" + e.getMessage());
                     continue;
                 } catch (Exception e) {
                     continue;

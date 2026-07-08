@@ -133,6 +133,10 @@ public class JaySenSuiteTab {
         parseBtn.setBorderPainted(false);
         parseBtn.setFocusPainted(false);
         parseBtn.addActionListener(e -> {
+            // 防止重复点击：立即禁用按钮并显示加载状态
+            parseBtn.setEnabled(false);
+            parseBtn.setText("⏳ 正在解析中...");
+            parseBtn.setBackground(new Color(150, 150, 150));
             // 第一步：强制保存当前UI配置到JSON
             saveCurrentUiConfig();
 
@@ -140,11 +144,13 @@ public class JaySenSuiteTab {
             String folderPath = folderPathField.getText().trim();
             if (folderPath.isEmpty() || folderPath.equals("请选择小程序目录（自动扫描所有wxapkg）")) {
                 JOptionPane.showMessageDialog(leftPanel, "请选择小程序目录！", "提示", JOptionPane.WARNING_MESSAGE);
+                resetParseBtn(parseBtn);
                 return;
             }
             File targetFolder = new File(folderPath);
             if (!targetFolder.exists() || !targetFolder.isDirectory()) {
                 JOptionPane.showMessageDialog(leftPanel, "选择的路径不是有效文件夹！", "错误", JOptionPane.ERROR_MESSAGE);
+                resetParseBtn(parseBtn);
                 return;
             }
 
@@ -152,6 +158,7 @@ public class JaySenSuiteTab {
             List<File> wxapkgFiles = scanWxapkgFiles(targetFolder);
             if (wxapkgFiles.isEmpty()) {
                 JOptionPane.showMessageDialog(leftPanel, "该目录下未找到任何wxapkg文件！", "提示", JOptionPane.INFORMATION_MESSAGE);
+                resetParseBtn(parseBtn);
                 return;
             }
 
@@ -170,6 +177,7 @@ public class JaySenSuiteTab {
                 }
             } catch (PatternSyntaxException ex) {
                 JOptionPane.showMessageDialog(leftPanel, "API提取正则格式错误：" + ex.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
+                resetParseBtn(parseBtn);
                 return;
             }
 
@@ -182,6 +190,7 @@ public class JaySenSuiteTab {
                 }
             } catch (PatternSyntaxException ex) {
                 JOptionPane.showMessageDialog(leftPanel, "敏感信息正则格式错误：" + ex.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
+                resetParseBtn(parseBtn);
                 return;
             }
 
@@ -235,10 +244,21 @@ public class JaySenSuiteTab {
                         }
                         appModel.addRow(new Object[]{"---", "---"});
 
-                        // 填充API结果
+                        // 填充API结果（去重+按字母排序）
                         DefaultTableModel apiModel = (DefaultTableModel) apiTable.getModel();
-                        for (WxAppletDecompiler.ApiInfo apiInfo : decompiler.getApiInfoList()) {
-                            apiModel.addRow(new Object[]{apiInfo.getIndex(), apiInfo.getFile(), apiInfo.getApi()});
+                        List<WxAppletDecompiler.ApiInfo> apiList = decompiler.getApiInfoList();
+                        // 去重：按API路径去重，保留首次出现的
+                        Map<String, WxAppletDecompiler.ApiInfo> uniqueMap = new LinkedHashMap<>();
+                        for (WxAppletDecompiler.ApiInfo info : apiList) {
+                            uniqueMap.putIfAbsent(info.getApi(), info);
+                        }
+                        // 按API路径字母排序
+                        List<WxAppletDecompiler.ApiInfo> sortedList = new ArrayList<>(uniqueMap.values());
+                        sortedList.sort(Comparator.comparing(WxAppletDecompiler.ApiInfo::getApi));
+                        // 重新编号填充
+                        int idx = 1;
+                        for (WxAppletDecompiler.ApiInfo apiInfo : sortedList) {
+                            apiModel.addRow(new Object[]{idx++, apiInfo.getFile(), apiInfo.getApi()});
                         }
 
                         // 填充敏感信息
@@ -251,11 +271,13 @@ public class JaySenSuiteTab {
 
                 @Override
                 protected void done() {
-                    JOptionPane.showMessageDialog(leftPanel,
-                            "批量解析完成！共处理 " + wxapkgFiles.size() + " 个wxapkg文件",
-                            "完成",
-                            JOptionPane.INFORMATION_MESSAGE
-                    );
+//                    JOptionPane.showMessageDialog(leftPanel,
+//                            "批量解析完成！共处理 " + wxapkgFiles.size() + " 个wxapkg文件",
+//                            "完成",
+//                            JOptionPane.INFORMATION_MESSAGE
+//                    );
+                    // 恢复按钮状态
+                    resetParseBtn(parseBtn);
                     // 启用文件浏览器按钮
                     openBrowserBtn.setEnabled(true);
                 }
@@ -281,13 +303,53 @@ public class JaySenSuiteTab {
         appInfoTable.getColumnModel().getColumn(1).setPreferredWidth(600);
         resultTabbedPane.addTab("小程序信息", new JScrollPane(appInfoTable));
 
-        // ② API提取结果表格（+一键复制）
+        // ② API提取结果表格（+右键菜单+一键复制）
         DefaultTableModel apiTableModel = new DefaultTableModel(new String[]{"序号", "文件", "API接口"}, 0);
         apiTable = new JTable(apiTableModel);
         apiTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
         apiTable.getColumnModel().getColumn(0).setPreferredWidth(50);
         apiTable.getColumnModel().getColumn(1).setPreferredWidth(200);
         apiTable.getColumnModel().getColumn(2).setPreferredWidth(500);
+
+        // 添加右键菜单：发送选中接口至AI参数智能推测页面
+        JPopupMenu apiTablePopup = new JPopupMenu();
+        JMenuItem sendToAiItem = new JMenuItem("发送选中接口至AI参数智能推测页面");
+        sendToAiItem.setFont(new Font("Microsoft YaHei", Font.PLAIN, 13));
+        sendToAiItem.addActionListener(e -> {
+            int[] selectedRows = apiTable.getSelectedRows();
+            if (selectedRows.length == 0) {
+                JOptionPane.showMessageDialog(leftPanel, "请先在表格中选择至少一条API记录！", "提示", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            DefaultTableModel model = (DefaultTableModel) apiTable.getModel();
+            List<String[]> apiDataList = new ArrayList<>();
+            for (int row : selectedRows) {
+                Object apiObj = model.getValueAt(row, 2); // 第3列：API接口
+                Object fileObj = model.getValueAt(row, 1); // 第2列：文件
+                if (apiObj != null) {
+                    String apiPath = apiObj.toString().trim();
+                    String sourceFile = fileObj != null ? fileObj.toString().trim() : "";
+                    apiDataList.add(new String[]{apiPath, sourceFile});
+                }
+            }
+            if (apiDataList.isEmpty()) {
+                JOptionPane.showMessageDialog(leftPanel, "未获取到有效的API数据！", "提示", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            // 发送至AI参数推测页面
+            AiParamInferTab aiTab = AiParamInferTab.getInstance();
+            if (aiTab != null) {
+                aiTab.addApis(apiDataList);
+//                JOptionPane.showMessageDialog(leftPanel,
+//                        "已发送 " + apiDataList.size() + " 个接口至【AI参数推测】页面！",
+//                        "发送成功", JOptionPane.INFORMATION_MESSAGE);
+            } else {
+                JOptionPane.showMessageDialog(leftPanel, "AI参数推测页面未初始化，请先打开该Tab！", "错误", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        apiTablePopup.add(sendToAiItem);
+        apiTable.setComponentPopupMenu(apiTablePopup);
+
         JPanel apiPanel = new JPanel(new BorderLayout());
         apiPanel.add(new JScrollPane(apiTable), BorderLayout.CENTER);
         JButton copyApiBtn = new JButton("一键复制API接口");
@@ -403,12 +465,31 @@ public class JaySenSuiteTab {
         rightPanel.add(prefixBlackPanel);
         rightPanel.add(Box.createVerticalStrut(15));
         rightPanel.add(suffixBlackPanel);
+        rightPanel.add(Box.createVerticalStrut(20));
+
+        // 一键恢复默认配置按钮
+        JButton resetDefaultBtn = new JButton("恢复默认配置");
+        resetDefaultBtn.setBackground(new Color(0, 114, 187));
+        resetDefaultBtn.setForeground(Color.WHITE);
+        resetDefaultBtn.setBorderPainted(false);
+        resetDefaultBtn.setFocusPainted(false);
+        resetDefaultBtn.setFont(new Font("Microsoft YaHei", Font.PLAIN, 13));
+        resetDefaultBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 36));
+        resetDefaultBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        resetDefaultBtn.addActionListener(e -> resetToDefaultConfig());
+        rightPanel.add(resetDefaultBtn);
 
         // 组装主分割面板
         mainSplitPane.setLeftComponent(leftPanel);
         mainSplitPane.setRightComponent(rightPanel);
 
-        return mainSplitPane;
+        // 顶层JTabbedPane：包含 JaySenWxapkg 和 AI参数推测 两个二级标签页
+        JTabbedPane topTabbedPane = new JTabbedPane();
+        topTabbedPane.addTab("解析Wxapkg", mainSplitPane);
+        AiParamInferTab aiTab = new AiParamInferTab(montoyaApi);
+        topTabbedPane.addTab("AI参数推测", aiTab.getUiComponent());
+
+        return topTabbedPane;
     }
 
     // ========== 内部类：配置修改监听器（修改即保存） ==========
@@ -436,6 +517,31 @@ public class JaySenSuiteTab {
         } catch (Exception e) {
             // 静默失败，不弹框干扰用户
         }
+    }
+
+    // ========== 一键恢复默认配置 ==========
+    private void resetToDefaultConfig() {
+        int choice = JOptionPane.showConfirmDialog(null,
+                "确认恢复默认配置？当前所有配置将被覆盖。",
+                "确认恢复", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (choice != JOptionPane.YES_OPTION) return;
+
+        // 恢复所有字段为默认值
+        apiRegexArea.setText(Config.DEFAULT_API_PATTERN.pattern());
+        sensitiveRegexArea.setText(Config.convertSensitiveMapToText(null));
+        suffixBlacklistField.setText(Config.convertSuffixSetToText(null));
+        prefixBlacklistField.setText(Config.convertPrefixSetToText(Config.DEFAULT_PREFIX_BLACKLIST));
+        defaultWxapkgPathField.setText(Config.DEFAULT_WXAPKGPATH);
+
+        // DocumentListener会自动触发saveCurrentUiConfig()保存到文件
+        JOptionPane.showMessageDialog(null, "已恢复默认配置并保存！", "完成", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    // ========== 恢复解析按钮状态 ==========
+    private void resetParseBtn(JButton btn) {
+        btn.setEnabled(true);
+        btn.setText("批量解析所有wxapkg");
+        btn.setBackground(new Color(0, 114, 187));
     }
 
     // ========== 工具方法：扫描目录下所有wxapkg文件（递归） ==========

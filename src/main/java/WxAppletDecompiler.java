@@ -47,8 +47,8 @@ public class WxAppletDecompiler {
 
     // 全局工具
     private final OkHttpClient okHttpClient = new OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
             .build();
     private final ObjectMapper objectMapper = new ObjectMapper();
     // AES解密工具实例
