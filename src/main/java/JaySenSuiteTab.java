@@ -21,6 +21,7 @@ import java.awt.*;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
 import java.io.File;
+import java.io.IOException;
 import java.util.*;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -33,6 +34,7 @@ public class JaySenSuiteTab {
     // ========== UI成员变量 ==========
     private JTable appInfoTable;      // 小程序信息表格
     private JTable apiTable;          // API结果表格
+    private java.util.Map<String, String> apiContextMap = new java.util.HashMap<>(); // API → 源码上下文
     private JTable sensitiveTable;    // 敏感信息表格
     private JTextField folderPathField; // 文件夹路径输入框
     // 自定义配置输入框
@@ -41,7 +43,9 @@ public class JaySenSuiteTab {
     private JTextField suffixBlacklistField;// 后缀黑名单
     private JTextField prefixBlacklistField; // 接口前缀过滤黑名单
     private JTextField defaultWxapkgPathField; // Wxapkg默认打开路径
+    private JLabel cacheSizeLabel;              // 缓存占用大小显示
     MontoyaApi montoyaApi;
+    private static final String CACHE_DIR = System.getProperty("user.home") + File.separator + ".burp" + File.separator + "JaySenWxapkgOutput";
     public JaySenSuiteTab(MontoyaApi montoyaApi) {
         this.montoyaApi = montoyaApi;
     }
@@ -78,8 +82,10 @@ public class JaySenSuiteTab {
         separator.setAlignmentX(Component.CENTER_ALIGNMENT);
 
         // 左侧功能区（文件夹选择+解析）
-        JPanel funcPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 20));
+        JPanel funcPanel = new JPanel();
+        funcPanel.setLayout(new BoxLayout(funcPanel, BoxLayout.Y_AXIS));
         funcPanel.setBackground(Color.WHITE);
+
         folderPathField = new JTextField(40);
         setPlaceholder(folderPathField, "请选择小程序目录（自动扫描所有wxapkg）");
 
@@ -125,6 +131,21 @@ public class JaySenSuiteTab {
         openBrowserBtn.addActionListener(e1 -> {
             String outputDir = System.getProperty("user.home") + File.separator +".burp" + File.separator + "JaySenWxapkgOutput";
             new WxapkgFileBrowser(outputDir,montoyaApi).setVisible(true);
+        });
+        // 打开解包缓存目录
+        JButton openCacheBtn = new JButton("打开缓存目录");
+        openCacheBtn.setBackground(new Color(0, 114, 187));
+        openCacheBtn.setForeground(Color.WHITE);
+        openCacheBtn.setBorderPainted(false);
+        openCacheBtn.setFocusPainted(false);
+        openCacheBtn.addActionListener(e -> {
+            try {
+                File cacheDir = new File(CACHE_DIR);
+                if (!cacheDir.exists()) cacheDir.mkdirs();
+                Desktop.getDesktop().open(cacheDir);
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(null, "无法打开缓存目录：" + ex.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
+            }
         });
         // 解析按钮（核心：先保存配置，再解析）
         JButton parseBtn = new JButton("批量解析所有wxapkg");
@@ -259,6 +280,10 @@ public class JaySenSuiteTab {
                         int idx = 1;
                         for (WxAppletDecompiler.ApiInfo apiInfo : sortedList) {
                             apiModel.addRow(new Object[]{idx++, apiInfo.getFile(), apiInfo.getApi()});
+                            // 存储源码上下文（供AI推测使用）
+                            if (apiInfo.getContext() != null && !apiInfo.getContext().isEmpty()) {
+                                apiContextMap.put(apiInfo.getApi(), apiInfo.getContext());
+                            }
                         }
 
                         // 填充敏感信息
@@ -280,16 +305,47 @@ public class JaySenSuiteTab {
                     resetParseBtn(parseBtn);
                     // 启用文件浏览器按钮
                     openBrowserBtn.setEnabled(true);
+                    // 刷新缓存大小
+                    updateCacheSize();
                 }
             }.execute();
         });
 
-        // 组装功能区
-        funcPanel.add(new JLabel("📁 目录："));
-        funcPanel.add(folderPathField);
-        funcPanel.add(selectFolderBtn);
-        funcPanel.add(parseBtn);
-        funcPanel.add(openBrowserBtn);
+        // ========== 组装UI布局 ==========
+        // 第一行：文件夹路径
+        JPanel pathRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
+        pathRow.setBackground(Color.WHITE);
+        pathRow.add(new JLabel("📁 目录："));
+        pathRow.add(folderPathField);
+        funcPanel.add(pathRow);
+
+        // 第二行：操作按钮
+        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
+        btnRow.setBackground(Color.WHITE);
+        btnRow.add(selectFolderBtn);
+        btnRow.add(parseBtn);
+        btnRow.add(openCacheBtn);
+        funcPanel.add(btnRow);
+
+        // 第三行：文件和缓存
+        JPanel utilRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
+        utilRow.setBackground(Color.WHITE);
+        utilRow.add(openBrowserBtn);
+
+        cacheSizeLabel = new JLabel("缓存: 计算中...");
+        cacheSizeLabel.setFont(new Font("Microsoft YaHei", Font.PLAIN, 12));
+        cacheSizeLabel.setForeground(Color.GRAY);
+        utilRow.add(cacheSizeLabel);
+
+        JButton clearCacheBtn = new JButton("清除缓存");
+        clearCacheBtn.setBackground(new Color(200, 80, 80));
+        clearCacheBtn.setForeground(Color.WHITE);
+        clearCacheBtn.setBorderPainted(false);
+        clearCacheBtn.setFocusPainted(false);
+        clearCacheBtn.addActionListener(e -> clearCache());
+        utilRow.add(clearCacheBtn);
+
+        funcPanel.add(utilRow);
 
         // 左侧结果展示区（标签页+表格）
         JTabbedPane resultTabbedPane = new JTabbedPane();
@@ -329,7 +385,8 @@ public class JaySenSuiteTab {
                 if (apiObj != null) {
                     String apiPath = apiObj.toString().trim();
                     String sourceFile = fileObj != null ? fileObj.toString().trim() : "";
-                    apiDataList.add(new String[]{apiPath, sourceFile});
+                    String context = apiContextMap.getOrDefault(apiPath, "");
+                    apiDataList.add(new String[]{apiPath, sourceFile, context});
                 }
             }
             if (apiDataList.isEmpty()) {
@@ -489,7 +546,81 @@ public class JaySenSuiteTab {
         AiParamInferTab aiTab = new AiParamInferTab(montoyaApi);
         topTabbedPane.addTab("AI参数推测", aiTab.getUiComponent());
 
+        // 初始计算缓存大小
+        updateCacheSize();
+
         return topTabbedPane;
+    }
+
+    // ========== 缓存管理 ==========
+    private void updateCacheSize() {
+        SwingUtilities.invokeLater(() -> {
+            try {
+                File cacheDir = new File(CACHE_DIR);
+                if (!cacheDir.exists()) {
+                    cacheSizeLabel.setText("缓存: 0 B (目录不存在)");
+                    cacheSizeLabel.setForeground(Color.GRAY);
+                    return;
+                }
+                long totalBytes = calculateDirSize(cacheDir);
+                cacheSizeLabel.setText("缓存: " + formatFileSize(totalBytes));
+                if (totalBytes > 500 * 1024 * 1024) cacheSizeLabel.setForeground(new Color(200, 60, 60));
+                else if (totalBytes > 100 * 1024 * 1024) cacheSizeLabel.setForeground(new Color(200, 150, 0));
+                else cacheSizeLabel.setForeground(new Color(0, 150, 0));
+            } catch (Exception e) {
+                cacheSizeLabel.setText("缓存: 计算失败");
+                cacheSizeLabel.setForeground(Color.GRAY);
+            }
+        });
+    }
+
+    private long calculateDirSize(File dir) {
+        long size = 0;
+        File[] files = dir.listFiles();
+        if (files == null) return 0;
+        for (File f : files) {
+            if (f.isFile()) size += f.length();
+            else if (f.isDirectory()) size += calculateDirSize(f);
+        }
+        return size;
+    }
+
+    private String formatFileSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
+        if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
+        return String.format("%.2f GB", bytes / (1024.0 * 1024 * 1024));
+    }
+
+    private void clearCache() {
+        File cacheDir = new File(CACHE_DIR);
+        if (!cacheDir.exists()) {
+            JOptionPane.showMessageDialog(null, "缓存目录不存在，无需清除。", "提示", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+        long totalBytes = calculateDirSize(cacheDir);
+        int confirm = JOptionPane.showConfirmDialog(null,
+            "确认清除全部解包缓存？\n\n路径: " + CACHE_DIR + "\n占用: " + formatFileSize(totalBytes),
+            "确认清除缓存", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+        if (confirm != JOptionPane.YES_OPTION) return;
+
+        try {
+            deleteRecursive(cacheDir);
+            updateCacheSize();
+            JOptionPane.showMessageDialog(null, "缓存已清除，释放 " + formatFileSize(totalBytes) + "。", "完成", JOptionPane.INFORMATION_MESSAGE);
+        } catch (Exception e) {
+            JOptionPane.showMessageDialog(null, "清除失败：" + e.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void deleteRecursive(File file) throws IOException {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) deleteRecursive(child);
+            }
+        }
+        if (!file.delete()) throw new IOException("无法删除 " + file.getAbsolutePath());
     }
 
     // ========== 内部类：配置修改监听器（修改即保存） ==========

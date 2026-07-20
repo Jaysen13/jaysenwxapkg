@@ -17,6 +17,8 @@ import burp.api.montoya.http.message.HttpHeader;
 import burp.api.montoya.http.message.HttpRequestResponse;
 import burp.api.montoya.http.message.requests.HttpRequest;
 import burp.api.montoya.proxy.ProxyHttpRequestResponse;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
 
 import javax.swing.*;
@@ -76,40 +78,60 @@ public class AiParamInferTab {
 
     // ========== 默认Prompt模板 ==========
     private static final String DEFAULT_PROMPT_TEMPLATE =
-            "你是一个资深后端开发工程师。请根据以下参考信息，只推测【待推测接口】列表中每个API的请求参数和完整请求示例。\n\n" +
-            "参考信息说明：\n" +
-            "\"已观测接口\"是该域名下实际监听到的请求，用于让你了解开发者的命名习惯和参数风格。这些接口无需你再推测。\n\n" +
-            "分析原则：\n" +
-            "1. 观察已观测接口中的参数命名（如 current/size/status/token 等），总结开发者的命名风格\n" +
-            "2. 根据接口路径语义推测业务参数（如 /order/list 推测分页、状态筛选等）\n" +
-            "3. 参考完整请求中的Headers（如Authorization、Content-Type、Referer）还原请求格式\n\n" +
-            "对【待推测接口】中的每个API，请按以下格式输出：\n" +
-            "【接口路径】/xxx/xxx\n" +
-            "  功能描述: 该接口的业务功能说明\n" +
-            "  请求方式: GET / POST（推测最可能的请求方式）\n" +
+            "你是一个资深后端开发/安全工程师。请根据【已观测接口】的命名风格和参数习惯，推测【待推测接口】列表中每个API的请求参数。\n\n" +
+            "===== 推测示例（请严格按此格式输出） =====\n" +
+            "【接口路径】/api/order/list\n" +
+            "  功能描述: 获取订单列表，支持分页和状态筛选\n" +
+            "  请求方式: GET\n" +
             "  推测参数:\n" +
-            "    - 参数名 | 类型 | 必填 | 说明 | 示例值\n" +
+            "    - page | int | 是 | 页码 | 1\n" +
+            "    - size | int | 是 | 每页条数 | 10\n" +
+            "    - status | string | 否 | 订单状态筛选 | pending\n" +
+            "    - keyword | string | 否 | 搜索关键词 | 手机\n" +
             "  完整请求示例:\n" +
             "    ```\n" +
-            "    GET /xxx/xxx?page=1&size=10 HTTP/1.1\n" +
-            "    Host: <参考完整请求中的Host>\n" +
+            "    GET /api/order/list?page=1&size=10&status=pending&keyword=手机 HTTP/1.1\n" +
+            "    Host: api.example.com\n" +
             "    Authorization: Bearer <token>\n" +
             "    Content-Type: application/json;charset=UTF-8\n" +
-            "    ...\n" +
-            "    ```\n\n" +
+            "    ```\n" +
+            "\n" +
+            "【接口路径】/api/user/login\n" +
+            "  功能描述: 用户登录接口，通过账号密码获取认证令牌\n" +
+            "  请求方式: POST\n" +
+            "  推测参数:\n" +
+            "    - username | string | 是 | 用户名/手机号 | 13800138000\n" +
+            "    - password | string | 是 | 密码 | 123456\n" +
+            "    - captcha | string | 否 | 验证码 | ab12\n" +
+            "  完整请求示例:\n" +
+            "    ```\n" +
+            "    POST /api/user/login HTTP/1.1\n" +
+            "    Host: api.example.com\n" +
+            "    Content-Type: application/json;charset=UTF-8\n" +
+            "    \n" +
+            "    {\"username\":\"13800138000\",\"password\":\"123456\"}\n" +
+            "    ```\n" +
+            "===== 示例结束 =====\n\n" +
+            "分析原则：\n" +
+            "1. 【最高优先级】若接口附带了\"源码上下文\"，优先从中提取参数名、请求方法和参数值，源码中的变量名和字面量是最准确的\n" +
+            "2. 其次参考【已观测接口】的参数命名风格（驼峰/下划线/拼音等）进行推测\n" +
+            "3. 根据接口路径语义推测业务参数（如 /order/list → 分页+状态，/user/login → 账号密码）\n" +
+            "4. 若已观测接口使用某个特定参数名（如 current 而非 page），请保持一致\n" +
+            "5. Body参数使用JSON格式，URL参数使用查询字符串\n" +
+            "6. 【重要】观察已观测接口的URL前缀模式（如 /shop/api/...），若待推测接口缺少该前缀，请在推测结果中补全为一致的前缀路径\n\n" +
             "====================\n" +
             "【待推测接口】（需要你推测参数的接口列表）\n" +
             "{api_list}\n\n" +
             "====================\n" +
-            "【已观测接口】（仅供参考，无需推测这些接口）\n" +
+            "【已观测接口】（学习命名风格和参数习惯，不要推测这些接口）\n" +
             "{param_refs}\n\n" +
-            "请只推测上面【待推测接口】中的接口，不要重复推测已观测接口。";
+            "注意：只推测【待推测接口】中的接口，每个接口输出一个完整的上述格式块。";
 
     // ========== AI配置默认值 ==========
     private static final String DEFAULT_MODEL_URL = "https://api.deepseek.com/chat/completions";
     private static final String DEFAULT_MODEL_NAME = "deepseek-chat";
     private static final String DEFAULT_TIMEOUT = "60";
-    private static final String DEFAULT_CONTEXT_LENGTH = "8192";
+    private static final String DEFAULT_CONTEXT_LENGTH = "24576";
 
     // ========== 中文字体 ==========
     private static final Font CN_FONT = new Font("Microsoft YaHei", Font.PLAIN, 12);
@@ -186,7 +208,7 @@ public class AiParamInferTab {
         apiListTable.getColumnModel().getColumn(1).setPreferredWidth(280);
         apiListTable.getColumnModel().getColumn(2).setPreferredWidth(150);
         apiListTable.getColumnModel().getColumn(3).setPreferredWidth(100);
-        apiListTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        apiListTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 
         // 选中行时自动展示历史详情
         apiListTable.getSelectionModel().addListSelectionListener((ListSelectionEvent e) -> {
@@ -196,7 +218,7 @@ public class AiParamInferTab {
         });
 
         JScrollPane tableScroll = new JScrollPane(apiListTable);
-        tableScroll.setBorder(BorderFactory.createTitledBorder("API列表（单击查看历史请求详情）"));
+        tableScroll.setBorder(BorderFactory.createTitledBorder("API列表（Shift/Ctrl多选，单击查看历史请求详情）"));
         centerSplit.setTopComponent(tableScroll);
 
         // 下：历史请求详情
@@ -221,10 +243,7 @@ public class AiParamInferTab {
         JButton refreshHistoryBtn = createButton("刷新Burp历史统计", new Color(0, 114, 187));
         refreshHistoryBtn.addActionListener(e -> refreshHistoryCount());
 
-        JButton sendAllBtn = createButton("发送全部至AI", new Color(0, 140, 80));
-        sendAllBtn.addActionListener(e -> sendAllToAI());
-
-        JButton sendSelectedBtn = createButton("发送选中至AI", new Color(200, 120, 0));
+        JButton sendSelectedBtn = createButton("发送选中至AI", new Color(0, 114, 187));
         sendSelectedBtn.addActionListener(e -> sendSelectedToAI());
 
         JButton deleteBtn = createButton("删除选中", new Color(150, 50, 50));
@@ -235,7 +254,6 @@ public class AiParamInferTab {
 
         btnPanel.add(clearBtn);
         btnPanel.add(refreshHistoryBtn);
-        btnPanel.add(sendAllBtn);
         btnPanel.add(sendSelectedBtn);
         btnPanel.add(deleteBtn);
         btnPanel.add(addManualBtn);
@@ -409,7 +427,7 @@ public class AiParamInferTab {
         JPanel testBtnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 2));
         testBtnPanel.setBackground(Color.WHITE);
         testBtnPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JButton testAiBtn = createButton("测试AI连接", new Color(0, 150, 100));
+        JButton testAiBtn = createButton("测试AI连接", new Color(0, 114, 187));
         testAiBtn.addActionListener(e -> testAiConnection());
         testBtnPanel.add(testAiBtn);
         panel.add(testBtnPanel);
@@ -439,7 +457,8 @@ public class AiParamInferTab {
             for (String[] apiData : apiDataList) {
                 String apiPath = apiData[0];
                 String sourceFile = apiData.length > 1 ? apiData[1] : "";
-                if (addApiInternal(apiPath, sourceFile)) {
+                String context = apiData.length > 2 ? apiData[2] : "";
+                if (addApiInternal(apiPath, sourceFile, context)) {
                     added++;
                 }
             }
@@ -453,12 +472,12 @@ public class AiParamInferTab {
         });
     }
 
-    private boolean addApiInternal(String apiPath, String sourceFile) {
+    private boolean addApiInternal(String apiPath, String sourceFile, String context) {
         for (ApiEntry entry : apiEntries) {
             if (entry.apiPath.equals(apiPath)) return false;
         }
         // 域名由用户手动输入，不再自动提取
-        ApiEntry entry = new ApiEntry(idCounter.incrementAndGet(), apiPath, sourceFile, "", 0);
+        ApiEntry entry = new ApiEntry(idCounter.incrementAndGet(), apiPath, sourceFile, context, "", 0);
         apiEntries.add(entry);
         apiListModel.addRow(new Object[]{entry.id, entry.apiPath, entry.sourceFile, 0});
         return true;
@@ -662,13 +681,19 @@ public class AiParamInferTab {
     }
 
     private void deleteSelectedApis() {
-        int row = apiListTable.getSelectedRow();
-        if (row < 0) {
+        int[] rows = apiListTable.getSelectedRows();
+        if (rows == null || rows.length == 0) {
             JOptionPane.showMessageDialog(null, "请先选择要删除的接口！", "提示", JOptionPane.WARNING_MESSAGE);
             return;
         }
-        if (row < apiEntries.size()) apiEntries.remove(row);
-        apiListModel.removeRow(row);
+        // 从后往前删除，避免索引偏移
+        for (int i = rows.length - 1; i >= 0; i--) {
+            int row = rows[i];
+            if (row >= 0 && row < apiEntries.size()) {
+                apiEntries.remove(row);
+                apiListModel.removeRow(row);
+            }
+        }
         historyDetailArea.setText("");
         updateStatus();
     }
@@ -704,7 +729,7 @@ public class AiParamInferTab {
         }
         String sourceFile = sourceField.getText().trim();
         if (sourceFile.isEmpty()) sourceFile = "手动添加";
-        if (addApiInternal(apiPath, sourceFile)) {
+        if (addApiInternal(apiPath, sourceFile, "")) {
             updateStatus();
             if (!getCurrentDomain().isEmpty()) refreshHistoryCount();
         } else {
@@ -755,17 +780,20 @@ public class AiParamInferTab {
         }.execute();
     }
 
-    private void sendAllToAI() {
-        if (apiEntries.isEmpty()) { JOptionPane.showMessageDialog(null, "请先添加接口！"); return; }
-        saveCurrentAiConfigSilently();
-        sendApisToAI(new ArrayList<>(apiEntries));
-    }
-
     private void sendSelectedToAI() {
-        int row = apiListTable.getSelectedRow();
-        if (row < 0) { JOptionPane.showMessageDialog(null, "请先选择接口！"); return; }
-        if (row >= apiEntries.size()) return;
-        sendApisToAI(Collections.singletonList(apiEntries.get(row)));
+        int[] rows = apiListTable.getSelectedRows();
+        if (rows == null || rows.length == 0) {
+            JOptionPane.showMessageDialog(null, "请先选择接口！（可Shift多选）"); return;
+        }
+        saveCurrentAiConfigSilently();
+        List<ApiEntry> selected = new ArrayList<>();
+        for (int row : rows) {
+            if (row >= 0 && row < apiEntries.size()) {
+                selected.add(apiEntries.get(row));
+            }
+        }
+        if (selected.isEmpty()) return;
+        sendApisToAI(selected);
     }
 
     private void sendApisToAI(List<ApiEntry> entries) {
@@ -780,24 +808,25 @@ public class AiParamInferTab {
 
         String domain = getCurrentDomain();
 
-        // 1. 构建待分析的API列表
+        // 1. 构建待分析的API列表（使用解包时预提取的源码上下文）
         StringBuilder apiListStr = new StringBuilder();
         for (int i = 0; i < entries.size(); i++) {
             ApiEntry e = entries.get(i);
             apiListStr.append(i + 1).append(". ").append(e.apiPath);
-            if (e.sourceFile != null && !e.sourceFile.isEmpty())
-                apiListStr.append(" （文件：").append(e.sourceFile).append("）");
+            if (e.context != null && !e.context.isEmpty()) {
+                apiListStr.append("\n   源码上下文:\n").append(e.context);
+            }
             apiListStr.append("\n");
         }
 
-        // 2. 构建已观测接口示例：1个完整GET + 1个完整POST + 其余压缩
+        // 2. 构建已观测接口示例：去重 + 精简Headers + 最多25条
         StringBuilder paramRefs = new StringBuilder();
+        List<String[]> allReqs = new ArrayList<>(); // 用于前缀检测
         if (!domain.isEmpty()) {
             List<ProxyHttpRequestResponse> history = getDomainHistory(domain);
-//            montoyaApi.logging().logToOutput("[DEBUG] sendApisToAI domain=" + domain + ", historySize=" + history.size());
 
-            // 收集所有非静态请求
-            List<String[]> allReqs = new ArrayList<>(); // [method, path, paramsForCompress, fullRequest]
+            // 收集所有非静态请求，按 method+path 去重
+            Set<String> seenKeys = new HashSet<>();
             boolean gotFullGet = false, gotFullPost = false;
 
             for (ProxyHttpRequestResponse entry : history) {
@@ -807,70 +836,83 @@ public class AiParamInferTab {
 
                     String method = req.method();
                     String path = req.path();
+                    String dedupKey = method + " " + path;
+                    if (!seenKeys.add(dedupKey)) continue; // 去重
 
-                    // 构建压缩格式参数: GET path:/a/b?c=123 或 POST path:/a/b body:{"a":"b"}
+                    // 压缩格式
                     StringBuilder compress = new StringBuilder();
-                    compress.append(method).append(" path:").append(path);
-                    // URL参数
-                     String fullUrl = req.url();
-                     String query = fullUrl.contains("?") ? fullUrl.substring(fullUrl.indexOf('?') + 1) : null;
-                     if (query != null && !query.isEmpty()) {
+                    compress.append(method).append(" ").append(path);
+                    String fullUrl = req.url();
+                    String query = fullUrl.contains("?") ? fullUrl.substring(fullUrl.indexOf('?') + 1) : null;
+                    if (query != null && !query.isEmpty()) {
+                        if (query.length() > 200) query = query.substring(0, 200) + "...";
                         compress.append("?").append(query);
                     }
-                    // Body
                     String bodyStr = "";
                     if (req.body() != null && req.body().length() > 0) {
                         bodyStr = req.bodyToString();
                         if (bodyStr != null && !bodyStr.isEmpty()) {
                             if (bodyStr.length() > 200) bodyStr = bodyStr.substring(0, 200) + "...";
-                            compress.append(" body:").append(bodyStr);
+                            compress.append("  body:").append(bodyStr);
                         }
                     }
 
-                    // 完整请求
+                    // 完整请求（仅保留关键Headers）
                     StringBuilder fullReq = new StringBuilder();
                     fullReq.append(method).append(" ").append(path).append(" HTTP/1.1\n");
                     for (HttpHeader h : req.headers()) {
-                        fullReq.append(h.name()).append(": ").append(h.value()).append("\n");
+                        String name = h.name().toLowerCase();
+                        if (name.equals("host") || name.equals("authorization")
+                                || name.equals("content-type") || name.equals("cookie")
+                                || name.equals("referer") || name.equals("x-requested-with")
+                                || name.startsWith("x-")) {
+                            fullReq.append(h.name()).append(": ").append(h.value()).append("\n");
+                        }
                     }
                     fullReq.append("\n");
                     if (!bodyStr.isEmpty()) fullReq.append(bodyStr).append("\n");
 
-                    allReqs.add(new String[]{method, compress.toString(), fullReq.toString()});
+                    allReqs.add(new String[]{method, path, compress.toString(), fullReq.toString()});
                 } catch (Exception ignored) {}
             }
 
-            if (!allReqs.isEmpty()) {
-                paramRefs.append("该域名下共发现 ").append(history.size()).append(" 条请求。\n\n");
+            // 限制最多25条参考请求
+            List<String[]> limitedReqs = allReqs.size() > 25 ? allReqs.subList(0, 25) : allReqs;
+
+            if (!limitedReqs.isEmpty()) {
+                paramRefs.append("该域名下共发现 ").append(history.size()).append(" 条请求，去重后 ").append(allReqs.size()).append(" 个接口。\n\n");
 
                 // 完整请求（GET + POST 各一个）
-                for (String[] r : allReqs) {
+                for (String[] r : limitedReqs) {
                     if (!gotFullGet && "GET".equalsIgnoreCase(r[0])) {
-                        paramRefs.append("【完整GET请求示例】\n").append(r[2]).append("\n");
+                        paramRefs.append("【完整GET请求示例】\n").append(r[3]).append("\n");
                         gotFullGet = true;
                     }
                     if (!gotFullPost && "POST".equalsIgnoreCase(r[0])) {
-                        paramRefs.append("【完整POST请求示例】\n").append(r[2]).append("\n");
+                        paramRefs.append("【完整POST请求示例】\n").append(r[3]).append("\n");
                         gotFullPost = true;
                     }
                 }
 
                 // 其余压缩展示
                 paramRefs.append("【其他已观测接口（压缩格式）】\n");
-                for (String[] r : allReqs) {
-                    paramRefs.append(r[1]).append("\n");
+                for (String[] r : limitedReqs) {
+                    paramRefs.append(r[2]).append("\n");
                 }
             } else {
                 paramRefs = new StringBuilder("未匹配到该域名下的历史请求。");
             }
         } else {
-            paramRefs = new StringBuilder("（未设置目标域名，无法提供请求参考。");
+            paramRefs = new StringBuilder("（未设置目标域名，无法提供请求参考。）");
         }
+
+        // 3. 自动检测URL前缀不一致，生成修正指令
+        String prefixCorrection = detectPrefixMismatch(allReqs, entries);
 
         String promptContent = promptArea.getText();
         promptContent = promptContent.replace("{param_refs}", paramRefs.toString());
         promptContent = promptContent.replace("{api_list}", apiListStr.toString().trim());
-        String finalPrompt = promptContent;
+        String finalPrompt = prefixCorrection + promptContent;
 
         int ctxLen;
         try { ctxLen = parseInt(contextLengthField.getText().trim()); }
@@ -1065,6 +1107,7 @@ public class AiParamInferTab {
 
     private static List<String> extractHttpRequests(String text) {
         List<String> requests = new ArrayList<>();
+        // 方式1：查找 ``` 包裹的 HTTP 请求块
         int pos = 0;
         while (true) {
             int start = text.indexOf("```", pos);
@@ -1080,6 +1123,51 @@ public class AiParamInferTab {
                 requests.add(block);
             }
             pos = end + 3;
+        }
+        if (!requests.isEmpty()) return requests;
+
+        // 方式2：兜底解析 — 查找缩进的完整请求示例块
+        // AI 输出格式: "    POST /path HTTP/1.1\n    Host: xxx\n    ...\n    \n    {body}"
+        String[] lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n");
+        int i = 0;
+        while (i < lines.length) {
+            String line = lines[i];
+            // 检测以4空格缩进开头的HTTP请求行
+            if (line.startsWith("    ") && line.length() > 14) {
+                String rest = line.substring(4).trim();
+                if (rest.startsWith("GET ") || rest.startsWith("POST ") || rest.startsWith("PUT ")
+                        || rest.startsWith("DELETE ") || rest.startsWith("PATCH ")) {
+                    StringBuilder block = new StringBuilder();
+                    block.append(rest).append("\n");
+                    int j = i + 1;
+                    // 收集后续缩进行直到非缩进行或下一个接口路径标记
+                    while (j < lines.length) {
+                        String next = lines[j];
+                        if (next.startsWith("    ") && next.length() > 4) {
+                            block.append(next.substring(4)).append("\n");
+                        } else if (next.trim().startsWith("【") || next.trim().startsWith("完整请求示例")) {
+                            break; // 下一个接口标记
+                        } else if (next.trim().isEmpty()) {
+                            // 空行可能是请求体的分隔
+                            if (j + 1 < lines.length && lines[j + 1].startsWith("    ")) {
+                                block.append("\n");
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                        j++;
+                    }
+                    String b = block.toString().trim();
+                    if (b.length() > 10) {
+                        requests.add(b);
+                    }
+                    i = j;
+                    continue;
+                }
+            }
+            i++;
         }
         return requests;
     }
@@ -1107,7 +1195,7 @@ public class AiParamInferTab {
 
         // montoyaApi.logging().logToOutput("[DEBUG] 开始 String.format...");
         String jsonBody = String.format(
-                "{\"model\":\"%s\",\"messages\":%s,\"temperature\":0.7}",
+                "{\"model\":\"%s\",\"messages\":%s,\"temperature\":0.1}",
                 escapeJsonPlain(modelName), messagesJson
         );
         // montoyaApi.logging().logToOutput("[DEBUG] jsonBody 完成, len=" + jsonBody.length());
@@ -1174,51 +1262,21 @@ public class AiParamInferTab {
         return result;
     }
 
+    private static final ObjectMapper JSON_MAPPER = new ObjectMapper();
+
     private String extractContentFromResponse(String jsonResponse) {
         try {
-            // montoyaApi.logging().logToOutput("[DEBUG] extractContentFromResponse 进入, json长度=" + jsonResponse.length());
-            // 手动查找 "content" 字段的值，避免正则回溯
-            int contentIdx = jsonResponse.indexOf("\"content\"");
-            if (contentIdx < 0) return jsonResponse;
-
-            // 跳过 "content"
-            int colonIdx = jsonResponse.indexOf(':', contentIdx + 9);
-            if (colonIdx < 0) return jsonResponse;
-
-            // 找到值的开头引号
-            int startQuote = -1;
-            for (int i = colonIdx + 1; i < jsonResponse.length(); i++) {
-                char c = jsonResponse.charAt(i);
-                if (c == '"') { startQuote = i; break; }
-                if (c != ' ' && c != '\n' && c != '\r' && c != '\t') break;
-            }
-            if (startQuote < 0) return jsonResponse;
-
-            // 手动找到结束引号（处理转义）
-            StringBuilder content = new StringBuilder();
-            for (int i = startQuote + 1; i < jsonResponse.length(); i++) {
-                char c = jsonResponse.charAt(i);
-                if (c == '\\') {
-                    if (i + 1 < jsonResponse.length()) {
-                        char next = jsonResponse.charAt(i + 1);
-                        switch (next) {
-                            case 'n':  content.append('\n'); break;
-                            case 't':  content.append('\t'); break;
-                            case 'r':  content.append('\r'); break;
-                            case '"':  content.append('"'); break;
-                            case '\\': content.append('\\'); break;
-                            default:   content.append(next); break;
-                        }
-                        i++;
-                    }
-                } else if (c == '"') {
-                    break; // 找到结束引号
-                } else {
-                    content.append(c);
+            JsonNode root = JSON_MAPPER.readTree(jsonResponse);
+            JsonNode choices = root.get("choices");
+            if (choices != null && choices.isArray() && choices.size() > 0) {
+                JsonNode message = choices.get(0).get("message");
+                if (message != null) {
+                    JsonNode content = message.get("content");
+                    if (content != null) return content.asText();
                 }
             }
-            montoyaApi.logging().logToOutput("[DEBUG] content 提取完成, 长度=" + content.length());
-            return content.toString();
+            // fallback: 返回原始响应
+            return jsonResponse;
         } catch (Exception e) {
             return jsonResponse;
         }
@@ -1309,6 +1367,56 @@ public class AiParamInferTab {
         return ext.length() <= 5 && STATIC_EXTENSIONS.contains(ext);
     }
 
+    // ========== 源码上下文读取 ==========
+    /**
+     * 自动检测待推测API是否缺少已观测API的URL前缀，生成明确修正指令
+     */
+    private String detectPrefixMismatch(List<String[]> observedReqs, List<ApiEntry> pendingApis) {
+        if (observedReqs == null || observedReqs.isEmpty()) return "";
+        if (pendingApis == null || pendingApis.isEmpty()) return "";
+
+        // 提取所有已观测路径
+        List<String> paths = new ArrayList<>();
+        for (String[] r : observedReqs) {
+            if (r.length > 1 && r[1] != null && !r[1].isEmpty()) {
+                paths.add(r[1]); // r[1] is path
+            }
+        }
+        if (paths.size() < 2) return "";
+
+        // 找最长公共前缀（以 / 为分隔）
+        String first = paths.get(0);
+        String commonPrefix = first;
+        for (int i = 1; i < paths.size(); i++) {
+            String p = paths.get(i);
+            int idx = 0;
+            while (idx < commonPrefix.length() && idx < p.length()
+                    && commonPrefix.charAt(idx) == p.charAt(idx)) {
+                idx++;
+            }
+            commonPrefix = commonPrefix.substring(0, idx);
+        }
+        // 截断到最后一个 / 之后（保留目录前缀）
+        int lastSlash = commonPrefix.lastIndexOf('/');
+        if (lastSlash <= 0) return "";
+        commonPrefix = commonPrefix.substring(0, lastSlash + 1); // e.g. "/shop/api/"
+
+        // 检查待推测接口是否缺少前缀
+        StringBuilder mismatches = new StringBuilder();
+        for (ApiEntry e : pendingApis) {
+            String apiPath = e.apiPath;
+            if (!apiPath.startsWith("/")) apiPath = "/" + apiPath;
+            if (!apiPath.startsWith(commonPrefix)) {
+                String corrected = commonPrefix + apiPath.substring(1); // 去掉开头的 /
+                mismatches.append("  ").append(apiPath).append("  → 请修正为  ").append(corrected).append("\n");
+            }
+        }
+        if (mismatches.length() == 0) return "";
+
+        return "【路径修正指令】以下接口路径缺少已观测到的通用前缀 " + commonPrefix
+                + "，推测和请求时请使用修正后的完整路径：\n" + mismatches + "\n";
+    }
+
     // ========== 日志操作 ==========
     private void appendLog(String msg) {
         try {
@@ -1333,18 +1441,21 @@ public class AiParamInferTab {
         int id;
         String apiPath;
         String sourceFile;
+        String context;
         String domain;
         int historyCount;
 
-        public ApiEntry(int id, String apiPath, String sourceFile, String domain, int historyCount) {
+        public ApiEntry(int id, String apiPath, String sourceFile, String context, String domain, int historyCount) {
             this.id = id;
             this.apiPath = apiPath;
             this.sourceFile = sourceFile;
+            this.context = context;
             this.domain = domain;
             this.historyCount = historyCount;
         }
         public String getApiPath() { return apiPath; }
         public String getSourceFile() { return sourceFile; }
+        public String getContext() { return context; }
         public String getDomain() { return domain; }
         public int getHistoryCount() { return historyCount; }
     }

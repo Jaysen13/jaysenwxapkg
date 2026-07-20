@@ -112,11 +112,7 @@ public class WxAppletDecompiler {
         // 3. 创建输出目录（默认=C:\Users\${USER}\.burp）
         String finalOutputDir = outputDir + File.separator + appID;
         Path outputPath = Paths.get(outputDir);
-        // 清除原有解包缓存
         try {
-            if (Files.exists(outputPath)) {
-                removeWxFile(outputPath, "原有解包缓存");
-            }
             Files.createDirectories(outputPath);
             addAppInfo("解包输出目录", finalOutputDir);
         } catch (IOException e) {
@@ -341,10 +337,10 @@ public class WxAppletDecompiler {
                     }
 
                     // 提取API接口
+                    String[] fileLines = content.split("\r?\n", -1);
                     java.util.regex.Matcher urlMatcher = customApiPattern.matcher(content);
                     while (urlMatcher.find()) {
                         String url = null;
-                        // 遍历正则分组，获取有效URL
                         for (int i = 1; i <= 5; i++) {
                             String group = urlMatcher.group(i);
                             if (group != null && !group.trim().isEmpty()) {
@@ -352,10 +348,29 @@ public class WxAppletDecompiler {
                                 break;
                             }
                         }
-                        // 空值过滤
-                        if (url == null || url.isEmpty()) {
-                            continue;
-                        }
+                        if (url == null || url.isEmpty()) continue;
+
+                        // 提取匹配位置周围的源码上下文（前后各5行）
+                        String apiContext = "";
+                        try {
+                            int matchPos = urlMatcher.start();
+                            int lineNum = 0, charCount = 0;
+                            for (int li = 0; li < fileLines.length; li++) {
+                                charCount += fileLines[li].length() + 1;
+                                if (charCount > matchPos) { lineNum = li; break; }
+                            }
+                            StringBuilder ctx = new StringBuilder();
+                            int ctxStart = Math.max(0, lineNum - 5);
+                            int ctxEnd = Math.min(fileLines.length - 1, lineNum + 5);
+                            for (int li = ctxStart; li <= ctxEnd; li++) {
+                                String l = fileLines[li].replace('\t', ' ');
+                                ctx.append("    ").append(li + 1).append("| ").append(l);
+                                if (l.length() > 120) ctx.append("...");
+                                ctx.append("\n");
+                            }
+                            if (ctx.length() > 800) ctx = new StringBuilder(ctx.substring(0, 800) + "...");
+                            apiContext = ctx.toString();
+                        } catch (Exception ignored) {}
 
                         boolean needFilter = false;
                         //过滤api前端路径
@@ -375,7 +390,7 @@ public class WxAppletDecompiler {
 
                         // 非过滤项添加到API列表
                         if (!needFilter) {
-                            apiInfoList.add(new ApiInfo(apiIndex++, file.toString().replace(outputPath,""), url));
+                            apiInfoList.add(new ApiInfo(apiIndex++, file.toString().replace(outputPath,""), url, apiContext));
                         }
                     }
 
@@ -480,14 +495,17 @@ public class WxAppletDecompiler {
         private final int index;
         private final String file;
         private final String api;
-        public ApiInfo(int index, String file, String api) {
+        private final String context;
+        public ApiInfo(int index, String file, String api, String context) {
             this.index = index;
             this.file = file;
             this.api = api;
+            this.context = context;
         }
         public int getIndex() { return index; }
         public String getFile() { return file; }
         public String getApi() { return api; }
+        public String getContext() { return context; }
     }
 
     public static class SensitiveInfo {
