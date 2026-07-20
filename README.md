@@ -4,7 +4,7 @@
 
 [![GitHub 总下载量](https://img.shields.io/github/downloads/Jaysen13/jaysenwxapkg/total?label=GitHub总下载量&color=4CAF50)](https://github.com/Jaysen13/jaysenwxapkg/releases)[](https://github.com/Jaysen13/jaysenwxapkg)
 
-![image-20260720220246195](D:\IdaProject\JavaProject\A_BurpExtender\jaysenwxapkg\README.assets\image-20260720220246195.png)
+![image-20260720220246195](./README.assets/image-20260720220246195.png)
 
 ## 📋 功能清单
 | 功能模块         | 核心能力                                                     |
@@ -50,7 +50,7 @@ C:\Users\你的用户名\AppData\Roaming\Tencent\xwechat\radium\users\32位字�
 
 自动解包文件夹下所有主包和分包，成功提取信息
 
-![image-20260720220404862](D:\IdaProject\JavaProject\A_BurpExtender\jaysenwxapkg\README.assets\image-20260720220404862.png)
+![image-20260720220404862](./README.assets/image-20260720220404862.png)
 
 并且可以配置右边的过滤机制，过滤掉匹配到的前端路径，和图片等等
 
@@ -64,7 +64,7 @@ C:\Users\你的用户名\AppData\Roaming\Tencent\xwechat\radium\users\32位字�
 
 解包提取到API接口后，可以切换到「AI参数推测」标签页，利用大模型自动推测每个接口的请求参数并一键发送测试请求。
 
-![image-20260720220945506](D:\IdaProject\JavaProject\A_BurpExtender\jaysenwxapkg\README.assets\image-20260720220945506.png)
+![image-20260720220945506](./README.assets/image-20260720220945506.png)
 
 ### 使用流程
 
@@ -72,7 +72,7 @@ C:\Users\你的用户名\AppData\Roaming\Tencent\xwechat\radium\users\32位字�
 
 在解析结果页的「API接口」表格中，选中想要推测的接口（支持 **Shift / Ctrl 按住多选**），右键点击 → 「发送选中接口至AI参数智能推测页面」。
 
-![image-20260720221054972](D:\IdaProject\JavaProject\A_BurpExtender\jaysenwxapkg\README.assets\image-20260720221054972.png)
+![image-20260720221054972](./README.assets/image-20260720221054972.png)
 
 **2. 配置AI连接参数**
 
@@ -90,7 +90,7 @@ C:\Users\你的用户名\AppData\Roaming\Tencent\xwechat\radium\users\32位字�
 
 填写完成后点击「测试AI连接」验证配置是否正确。
 
-![image-20260720221247003](D:\IdaProject\JavaProject\A_BurpExtender\jaysenwxapkg\README.assets\image-20260720221247003.png)
+![image-20260720221247003](./README.assets/image-20260720221247003.png)
 
 **3. 开始推测**
 
@@ -100,7 +100,7 @@ C:\Users\你的用户名\AppData\Roaming\Tencent\xwechat\radium\users\32位字�
 - 结合 **Burp 历史中同域名下的真实请求**作为参考，让 AI 了解开发者的参数命名风格
 - 自动检测并**补全 URL 前缀**（如已观测接口统一使用 `/shop/api/`，则自动修正缺少前缀的接口）
 
-![image-20260720221611669](D:\IdaProject\JavaProject\A_BurpExtender\jaysenwxapkg\README.assets\image-20260720221611669.png)
+![image-20260720221611669](./README.assets/image-20260720221611669.png)
 
 **4. 执行AI生成的请求**
 
@@ -108,13 +108,13 @@ AI返回推测结果后，插件自动解析其中的HTTP请求块，直接通�
 
 日志视图过滤器输入**aijaysenwxapkg**筛选即可
 
-![image-20260720222113742](D:\IdaProject\JavaProject\A_BurpExtender\jaysenwxapkg\README.assets\image-20260720222113742.png)
+![image-20260720222113742](./README.assets/image-20260720222113742.png)
 
-![image-20260720222227351](D:\IdaProject\JavaProject\A_BurpExtender\jaysenwxapkg\README.assets\image-20260720222227351.png)
+![image-20260720222227351](./README.assets/image-20260720222227351.png)
 
 ### ai对话日志示例展示
 
-![image-20260720222844180](D:\IdaProject\JavaProject\A_BurpExtender\jaysenwxapkg\README.assets\image-20260720222844180.png)
+![image-20260720222844180](./README.assets/image-20260720222844180.png)
 
 ### 核心亮点
 
