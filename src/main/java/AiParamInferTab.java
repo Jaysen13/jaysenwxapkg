@@ -66,6 +66,7 @@ public class AiParamInferTab {
     private JTextField contextLengthField;
     private JTextField extraHeadersField;
     private JTextField domainField;
+    private JComboBox<String> presetField;
     private JLabel statusLabel;
     private MontoyaApi montoyaApi;
 
@@ -132,12 +133,22 @@ public class AiParamInferTab {
     private static final String DEFAULT_MODEL_NAME = "deepseek-chat";
     private static final String DEFAULT_TIMEOUT = "60";
     private static final String DEFAULT_CONTEXT_LENGTH = "24576";
+    private static final String CUSTOM_PRESET = "Custom";
+    private static final String CHAT_COMPLETIONS_SUFFIX = "/chat/completions";
+    private static final String MINI_MAX_PROVIDER = "MiniMax";
+    private static final String MINI_MAX_M3 = "MiniMax-M3";
+    private static final String MINI_MAX_M27 = "MiniMax-M2.7";
+    private static final String MINI_MAX_GLOBAL_BASE_URL = "https://api.minimax.io/v1";
+    private static final String MINI_MAX_CHINA_BASE_URL = "https://api.minimaxi.com/v1";
+    private static final Map<String, ChatPreset> CHAT_PRESETS = buildChatPresets();
 
     // ========== 中文字体 ==========
     private static final Font CN_FONT = new Font("Microsoft YaHei", Font.PLAIN, 12);
     private static final Font CN_BOLD_FONT = new Font("Microsoft YaHei", Font.BOLD, 12);
     private static final String LOG_DATE_FORMAT = "yyyy-MM-dd HH:mm:ss";
     private static final File LOG_FILE = new File(System.getProperty("user.home") + "\\.burp\\jaysenwxapkg\\jaysenwxapkg.log");
+
+    record ChatPreset(String providerName, String modelName, String modelUrl, String contextLength) {}
 
     public AiParamInferTab(MontoyaApi montoyaApi) {
         this.montoyaApi = montoyaApi;
@@ -360,15 +371,28 @@ public class AiParamInferTab {
         JPanel configPanel = new JPanel(new GridBagLayout());
         configPanel.setBackground(Color.WHITE);
         configPanel.setBorder(BorderFactory.createTitledBorder("API连接参数"));
-        configPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 220));
+        configPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 260));
         configPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.insets = new Insets(2, 5, 2, 5);
         gbc.weightx = 1.0;
 
-        // API Key
+        // Provider preset
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0;
+        configPanel.add(new JLabel("Provider preset:"), gbc);
+        gbc.gridx = 1; gbc.gridwidth = 2; gbc.weightx = 1.0;
+        presetField = new JComboBox<>(buildPresetLabels());
+        presetField.setFont(CN_FONT);
+        presetField.addActionListener(e -> applySelectedPreset());
+        configPanel.add(presetField, gbc);
+        gbc.gridx = 3; gbc.gridwidth = 1; gbc.weightx = 0;
+        JButton applyPresetBtn = createButton("Apply", new Color(0, 114, 187));
+        applyPresetBtn.addActionListener(e -> applySelectedPreset());
+        configPanel.add(applyPresetBtn, gbc);
+
+        // API Key
+        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0;
         configPanel.add(new JLabel("API Key:"), gbc);
         gbc.gridx = 1; gbc.weightx = 1.0;
         apiKeyField = new JTextField(30);
@@ -376,7 +400,7 @@ public class AiParamInferTab {
         configPanel.add(apiKeyField, gbc);
 
         // 模型地址
-        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0;
+        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0;
         configPanel.add(new JLabel("API地址:"), gbc);
         gbc.gridx = 1; gbc.weightx = 1.0;
         modelUrlField = new JTextField(DEFAULT_MODEL_URL, 30);
@@ -384,7 +408,7 @@ public class AiParamInferTab {
         configPanel.add(modelUrlField, gbc);
 
         // 模型名称
-        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0;
+        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0;
         configPanel.add(new JLabel("模型名称:"), gbc);
         gbc.gridx = 1; gbc.weightx = 1.0;
         modelNameField = new JTextField(DEFAULT_MODEL_NAME, 20);
@@ -392,7 +416,7 @@ public class AiParamInferTab {
         configPanel.add(modelNameField, gbc);
 
         // 请求超时 & 上下文长度（同行）
-        gbc.gridx = 0; gbc.gridy = 3; gbc.weightx = 0;
+        gbc.gridx = 0; gbc.gridy = 4; gbc.weightx = 0;
         configPanel.add(new JLabel("超时(秒):"), gbc);
         gbc.gridx = 1; gbc.weightx = 0.5;
         timeoutField = new JTextField(DEFAULT_TIMEOUT, 5);
@@ -407,7 +431,7 @@ public class AiParamInferTab {
         configPanel.add(contextLengthField, gbc);
 
         // 额外Headers（适配不同API认证方式）
-        gbc.gridx = 0; gbc.gridy = 4; gbc.weightx = 0;
+        gbc.gridx = 0; gbc.gridy = 5; gbc.weightx = 0;
         configPanel.add(new JLabel("额外Headers:"), gbc);
         gbc.gridx = 1; gbc.gridwidth = 3; gbc.weightx = 1.0;
         extraHeadersField = new JTextField("", 30);
@@ -448,6 +472,62 @@ public class AiParamInferTab {
         btn.setFocusPainted(false);
         btn.setFont(CN_BOLD_FONT);
         return btn;
+    }
+
+    private static String[] buildPresetLabels() {
+        String[] labels = new String[CHAT_PRESETS.size() + 1];
+        labels[0] = CUSTOM_PRESET;
+        int index = 1;
+        for (String label : CHAT_PRESETS.keySet()) {
+            labels[index++] = label;
+        }
+        return labels;
+    }
+
+    private static Map<String, ChatPreset> buildChatPresets() {
+        Map<String, ChatPreset> presets = new LinkedHashMap<>();
+        presets.put(MINI_MAX_PROVIDER + " / " + MINI_MAX_M3 + " (Global)", new ChatPreset(MINI_MAX_PROVIDER, MINI_MAX_M3, MINI_MAX_GLOBAL_BASE_URL, "1000000"));
+        presets.put(MINI_MAX_PROVIDER + " / " + MINI_MAX_M3 + " (China)", new ChatPreset(MINI_MAX_PROVIDER, MINI_MAX_M3, MINI_MAX_CHINA_BASE_URL, "1000000"));
+        presets.put(MINI_MAX_PROVIDER + " / " + MINI_MAX_M27 + " (Global)", new ChatPreset(MINI_MAX_PROVIDER, MINI_MAX_M27, MINI_MAX_GLOBAL_BASE_URL, "204800"));
+        presets.put(MINI_MAX_PROVIDER + " / " + MINI_MAX_M27 + " (China)", new ChatPreset(MINI_MAX_PROVIDER, MINI_MAX_M27, MINI_MAX_CHINA_BASE_URL, "204800"));
+        return presets;
+    }
+
+    static ChatPreset getPreset(String label) {
+        return CHAT_PRESETS.get(label);
+    }
+
+    private void applySelectedPreset() {
+        if (presetField == null) return;
+        Object selected = presetField.getSelectedItem();
+        if (selected == null) return;
+        ChatPreset preset = CHAT_PRESETS.get(selected.toString());
+        if (preset == null) return;
+        modelUrlField.setText(preset.modelUrl());
+        modelNameField.setText(preset.modelName());
+        contextLengthField.setText(preset.contextLength());
+    }
+
+    private void syncPresetSelection() {
+        if (presetField == null) return;
+        String modelUrl = modelUrlField.getText().trim();
+        String modelName = modelNameField.getText().trim();
+        String contextLength = contextLengthField.getText().trim();
+        for (Map.Entry<String, ChatPreset> entry : CHAT_PRESETS.entrySet()) {
+            ChatPreset preset = entry.getValue();
+            if (preset.modelUrl().equals(modelUrl) && preset.modelName().equals(modelName) && preset.contextLength().equals(contextLength)) {
+                presetField.setSelectedItem(entry.getKey());
+                return;
+            }
+        }
+        presetField.setSelectedItem(CUSTOM_PRESET);
+    }
+
+    static String normalizeChatCompletionsUrl(String modelUrl) {
+        if (modelUrl == null) return "";
+        String normalized = modelUrl.trim();
+        if (normalized.isEmpty() || normalized.endsWith(CHAT_COMPLETIONS_SUFFIX)) return normalized;
+        return normalized.replaceAll("/+$", "") + CHAT_COMPLETIONS_SUFFIX;
     }
 
     // ========== 核心：从wxapkg页面接收API数据 ==========
@@ -521,6 +601,7 @@ public class AiParamInferTab {
             if (cfg.getAiExtraHeaders() != null) extraHeadersField.setText(cfg.getAiExtraHeaders());
             if (cfg.getAiPromptTemplate() != null) promptArea.setText(cfg.getAiPromptTemplate());
             if (cfg.getAiDomain() != null) domainField.setText(cfg.getAiDomain());
+            syncPresetSelection();
         } catch (Exception ignored) {}
     }
 
@@ -1204,15 +1285,12 @@ public class AiParamInferTab {
         RequestBody body = RequestBody.create(jsonBody, MediaType.parse("application/json;charset=utf-8"));
         // montoyaApi.logging().logToOutput("[DEBUG] RequestBody 完成");
 
-        // 特殊处理：Mimo API 使用 api-key 头 + base URL需补全路径
+        // 特殊处理：Mimo API 使用 api-key 头
         boolean isMimo = modelUrl.contains("xiaomimimo.com");
-        String apiUrl = modelUrl;
+        String apiUrl = normalizeChatCompletionsUrl(modelUrl);
         String authHeaderName = "Authorization";
         String authHeaderValue = "Bearer " + apiKey;
         if (isMimo) {
-            if (!apiUrl.endsWith("/chat/completions")) {
-                apiUrl = apiUrl.replaceAll("/+$", "") + "/chat/completions";
-            }
             authHeaderName = "api-key";
             authHeaderValue = apiKey;
         }

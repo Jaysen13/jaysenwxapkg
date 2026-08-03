@@ -1,13 +1,34 @@
+import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 
-/**
- * 独立测试类：扫描反编译后的文件夹，用指定正则匹配API并统计数量
- */
 public class WxapkgApiTestMain {
-    public static void main(String[] args) {
-        String url = "/pageages/aaa";
-        if (url.contains("pageage")){
-            System.out.println(url);
-        }
+    @Test
+    public void normalizesOpenAiCompatibleBaseUrlsToChatCompletions() {
+        assertEquals(
+                "https://api.minimax.io/v1/chat/completions",
+                AiParamInferTab.normalizeChatCompletionsUrl("https://api.minimax.io/v1")
+        );
+        assertEquals(
+                "https://api.minimaxi.com/v1/chat/completions",
+                AiParamInferTab.normalizeChatCompletionsUrl("https://api.minimaxi.com/v1/")
+        );
+    }
+
+    @Test
+    public void exposesCurrentMinimaxPresetMetadata() {
+        AiParamInferTab.ChatPreset m3Global = AiParamInferTab.getPreset("MiniMax / MiniMax-M3 (Global)");
+        AiParamInferTab.ChatPreset m27China = AiParamInferTab.getPreset("MiniMax / MiniMax-M2.7 (China)");
+
+        assertNotNull(m3Global);
+        assertNotNull(m27China);
+        assertEquals("MiniMax", m3Global.providerName());
+        assertEquals("MiniMax-M3", m3Global.modelName());
+        assertEquals("https://api.minimax.io/v1", m3Global.modelUrl());
+        assertEquals("1000000", m3Global.contextLength());
+        assertEquals("MiniMax-M2.7", m27China.modelName());
+        assertEquals("https://api.minimaxi.com/v1", m27China.modelUrl());
+        assertEquals("204800", m27China.contextLength());
     }
 }
