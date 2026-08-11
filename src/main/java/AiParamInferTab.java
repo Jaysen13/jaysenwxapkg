@@ -1292,7 +1292,7 @@ public class AiParamInferTab {
         RequestBody body = RequestBody.create(jsonBody, MediaType.parse("application/json;charset=utf-8"));
         // montoyaApi.logging().logToOutput("[DEBUG] RequestBody 完成");
 
-        // 特殊处理：Mimo API 使用 api-key 头
+        // Mimo uses the api-key authentication header.
         boolean isMimo = modelUrl.contains("xiaomimimo.com");
         String apiUrl = normalizeChatCompletionsUrl(modelUrl);
         String authHeaderName = "Authorization";
