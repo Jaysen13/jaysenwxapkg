@@ -17,6 +17,14 @@ public class WxapkgApiTestMain {
     }
 
     @Test
+    public void preservesConfiguredCustomEndpoints() {
+        assertEquals(
+                "https://gateway.example.com/custom/chat",
+                AiParamInferTab.normalizeChatCompletionsUrl("https://gateway.example.com/custom/chat")
+        );
+    }
+
+    @Test
     public void exposesCurrentMinimaxPresetMetadata() {
         AiParamInferTab.ChatPreset m3Global = AiParamInferTab.getPreset("MiniMax / MiniMax-M3 (Global)");
         AiParamInferTab.ChatPreset m27China = AiParamInferTab.getPreset("MiniMax / MiniMax-M2.7 (China)");

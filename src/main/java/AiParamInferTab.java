@@ -526,8 +526,15 @@ public class AiParamInferTab {
     static String normalizeChatCompletionsUrl(String modelUrl) {
         if (modelUrl == null) return "";
         String normalized = modelUrl.trim();
-        if (normalized.isEmpty() || normalized.endsWith(CHAT_COMPLETIONS_SUFFIX)) return normalized;
-        return normalized.replaceAll("/+$", "") + CHAT_COMPLETIONS_SUFFIX;
+        if (normalized.isEmpty()) return normalized;
+        String baseUrl = normalized.replaceAll("/+$", "");
+        if (baseUrl.endsWith(CHAT_COMPLETIONS_SUFFIX)) return baseUrl;
+        if (baseUrl.equals(MINI_MAX_GLOBAL_BASE_URL)
+                || baseUrl.equals(MINI_MAX_CHINA_BASE_URL)
+                || baseUrl.contains("xiaomimimo.com")) {
+            return baseUrl + CHAT_COMPLETIONS_SUFFIX;
+        }
+        return normalized;
     }
 
     // ========== 核心：从wxapkg页面接收API数据 ==========
