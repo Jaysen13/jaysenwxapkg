@@ -166,4 +166,4 @@ IP地址:^(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.(?:25[0-5]|2[0-4][0-9
 
 <img src="./README.assets/image-20260110135348872.png" alt="image-20260110135348872" style="zoom: 50%;" />
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Jaysen13/jaysenwxapkg&type=Date)](https://star-history.com/#Jaysen13/jaysenwxapkg&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=Jaysen13/jaysenwxapkg&type=Date)](https://star-history.dera.page/#Jaysen13/jaysenwxapkg&Date)
