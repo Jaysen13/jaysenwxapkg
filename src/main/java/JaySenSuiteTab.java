@@ -44,10 +44,19 @@ public class JaySenSuiteTab {
     private JTextField prefixBlacklistField; // 接口前缀过滤黑名单
     private JTextField defaultWxapkgPathField; // Wxapkg默认打开路径
     private JLabel cacheSizeLabel;              // 缓存占用大小显示
+    private McpServerTab mcpTab;                // MCP Server 标签页（卸载时用于停止服务）
     MontoyaApi montoyaApi;
     private static final String CACHE_DIR = System.getProperty("user.home") + File.separator + ".burp" + File.separator + "JaySenWxapkgOutput";
     public JaySenSuiteTab(MontoyaApi montoyaApi) {
         this.montoyaApi = montoyaApi;
+    }
+
+    /** 插件卸载/关闭 Burp 时停止 MCP 服务，释放端口 */
+    public void shutdownMcpServer() {
+        if (mcpTab != null) {
+            mcpTab.shutdown();
+            mcpTab = null;
+        }
     }
     // ========== 核心方法：返回UI组件 ==========
     public Component getUiComponent() {
@@ -315,7 +324,7 @@ public class JaySenSuiteTab {
         // 第一行：文件夹路径
         JPanel pathRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 10, 5));
         pathRow.setBackground(Color.WHITE);
-        pathRow.add(new JLabel("📁 目录："));
+        pathRow.add(new JLabel("目录："));
         pathRow.add(folderPathField);
         funcPanel.add(pathRow);
 
@@ -540,11 +549,13 @@ public class JaySenSuiteTab {
         mainSplitPane.setLeftComponent(leftPanel);
         mainSplitPane.setRightComponent(rightPanel);
 
-        // 顶层JTabbedPane：包含 JaySenWxapkg 和 AI参数推测 两个二级标签页
+        // 顶层JTabbedPane：包含 解析Wxapkg / AI参数推测 / MCP Server 三个二级标签页
         JTabbedPane topTabbedPane = new JTabbedPane();
         topTabbedPane.addTab("解析Wxapkg", mainSplitPane);
         AiParamInferTab aiTab = new AiParamInferTab(montoyaApi);
         topTabbedPane.addTab("AI参数推测", aiTab.getUiComponent());
+        mcpTab = new McpServerTab(montoyaApi);
+        topTabbedPane.addTab("MCP Server", mcpTab.getUiComponent());
 
         // 初始计算缓存大小
         updateCacheSize();

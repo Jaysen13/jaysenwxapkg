@@ -95,7 +95,7 @@ public class WxAppletDecompiler {
         // 1. 校验文件
         File wxapkgFile = new File(wxapkgFilePath);
         if (!wxapkgFile.exists() || !wxapkgFile.isFile()) {
-            errorBuilder.append("❌ 错误：指定的wxapkg文件不存在！路径：").append(wxapkgFilePath);
+            errorBuilder.append("错误：指定的wxapkg文件不存在！路径：").append(wxapkgFilePath);
             addAppInfo("错误信息", errorBuilder.toString());
             return;
         }
@@ -116,7 +116,7 @@ public class WxAppletDecompiler {
             Files.createDirectories(outputPath);
             addAppInfo("解包输出目录", finalOutputDir);
         } catch (IOException e) {
-            errorBuilder.append("❌ 创建输出目录失败：").append(e.getMessage());
+            errorBuilder.append("创建输出目录失败：").append(e.getMessage());
             addAppInfo("错误信息", errorBuilder.toString());
             return;
         }
@@ -125,11 +125,11 @@ public class WxAppletDecompiler {
         addAppInfo("解包状态", "开始解包wxapkg文件：" + wxapkgFilePath);
         int fileCount = unpack(wxapkgFilePath, finalOutputDir, threadNum);
         if (fileCount == 0) {
-            addAppInfo("解包状态", "❌ 直接解包失败，尝试AES解密后重试...");
+            addAppInfo("解包状态", "直接解包失败，尝试AES解密后重试...");
             try {
                 // 校验是否为加密的wxapkg
                 if (!aesDecompiler.isEncryptedWxapkg(wxapkgFilePath)) {
-                    addAppInfo("解包状态", "❌ 非加密wxapkg包，解包失败！");
+                    addAppInfo("解包状态", "非加密wxapkg包，解包失败！");
                     return;
                 }
                 // 生成临时解密文件
@@ -138,34 +138,58 @@ public class WxAppletDecompiler {
                 String tempDecryptedFile = new File(finalOutputDir, tempFileName).getAbsolutePath();
                 // 执行AES解密（使用提取的AppID作为wxid）
                 aesDecompiler.decrypt(appID, wxapkgFilePath, tempDecryptedFile);
-                addAppInfo("AES解密", "✅ 加密包解密成功：" + tempDecryptedFile);
+                addAppInfo("AES解密", "加密包解密成功：" + tempDecryptedFile);
 
                 // 用解密后的文件重新解包
                 fileCount = unpack(tempDecryptedFile, finalOutputDir, threadNum);
                 if (fileCount == 0) {
-                    addAppInfo("解包状态", "❌ AES解密后解包仍失败！");
+                    addAppInfo("解包状态", "AES解密后解包仍失败！");
                     return;
                 }
-                addAppInfo("解包结果", "✅ AES解密后解包完成！共解压 " + fileCount + " 个文件");
+                addAppInfo("解包结果", "AES解密后解包完成！共解压 " + fileCount + " 个文件");
             } catch (Exception e) {
-                addAppInfo("AES解密失败", "❌ " + e.getMessage());
+                addAppInfo("AES解密失败", "" + e.getMessage());
                 return;
             }
         } else {
-            addAppInfo("解包结果", "✅ 直接解包完成！共解压 " + fileCount + " 个文件");
+            addAppInfo("解包结果", "直接解包完成！共解压 " + fileCount + " 个文件");
         }
+
+        // 本地提取名称（不依赖网络）：app-config.json 的 navigationBarTitleText，或页面 json 的标题
+        File outputDirFile = new File(finalOutputDir);
+        String localName = extractLocalAppName(outputDirFile);
 
         // 查询小程序信息
         Map<String, String> wxapkgInfo = queryAppInfo(appID);
-        addAppInfo("小程序名称", wxapkgInfo.get("nickName"));
-        addAppInfo("用户名", wxapkgInfo.get("userName"));
-        addAppInfo("描述", wxapkgInfo.get("description"));
-        addAppInfo("主体名称", wxapkgInfo.get("principalName"));
+        String nickName = wxapkgInfo.get("nickName");
+        boolean unknownName = nickName == null || nickName.trim().isEmpty() || "未知小程序".equals(nickName);
+        if (unknownName) {
+            nickName = (localName != null && !localName.isEmpty()) ? localName + "（本地提取）" : "未知小程序";
+        }
+        addAppInfo("小程序名称", nickName);
+        if (localName != null) {
+            addAppInfo("页面标题", localName);
+        }
+        // 本地辅助信息（不依赖网络接口）
+        addAppInfo("类型", detectAppType(outputDirFile));
+        addAppInfo("AppID", appID);
+        addAppInfo("文件数", String.valueOf(countFiles(outputDirFile)));
+        addAppInfo("解包大小", formatSize(dirSize(outputDirFile)));
+        // 网络接口已关闭，这些字段为空时不再显示空行
+        if (!wxapkgInfo.get("userName").isEmpty()) {
+            addAppInfo("用户名", wxapkgInfo.get("userName"));
+        }
+        if (!wxapkgInfo.get("description").isEmpty()) {
+            addAppInfo("描述", wxapkgInfo.get("description"));
+        }
+        if (!wxapkgInfo.get("principalName").isEmpty()) {
+            addAppInfo("主体名称", wxapkgInfo.get("principalName"));
+        }
 
         // 信息泄露检测（不过滤文件，仅过滤URL）
-        addAppInfo("检测状态", "🔍 开始执行信息泄露检测（所有文件都扫描）...");
+        addAppInfo("检测状态", "开始执行信息泄露检测（所有文件都扫描）...");
         infoLeakDetect(finalOutputDir);
-        addAppInfo("检测状态", "✅ 信息泄露检测完成！");
+        addAppInfo("检测状态", "信息泄露检测完成！");
     }
 
     /**
@@ -267,6 +291,105 @@ public class WxAppletDecompiler {
     }
 
     /**
+     * 从解包产物中本地提取小程序名称（不依赖网络接口）
+     * 优先级：app-config.json → app.json / game.json → 所有页面 json（取出现次数最多的标题）
+     */
+    public String extractLocalAppName(File outputDir) {
+        if (outputDir == null || !outputDir.isDirectory()) return null;
+        String title = readJsonTitle(new File(outputDir, "app-config.json"));
+        if (title != null) return title;
+        title = readJsonTitle(new File(outputDir, "app.json"));
+        if (title != null) return title;
+        title = readJsonTitle(new File(outputDir, "game.json"));
+        if (title != null) return title;
+
+        // 兜底：扫描页面 json 的 navigationBarTitleText，取出现次数最多的
+        Map<String, Integer> counter = new HashMap<>();
+        try {
+            Files.walk(outputDir.toPath())
+                    .filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().toLowerCase().endsWith(".json"))
+                    .forEach(p -> {
+                        String t = readJsonTitle(p.toFile());
+                        if (t != null) counter.merge(t, 1, Integer::sum);
+                    });
+        } catch (Exception ignored) {
+        }
+        return counter.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(null);
+    }
+
+    /** 读取 json 中的标题字段（navigationBarTitleText 等），没有则返回 null */
+    private String readJsonTitle(File jsonFile) {
+        if (jsonFile == null || !jsonFile.isFile()) return null;
+        try {
+            JsonNode root = objectMapper.readTree(jsonFile);
+            if (root == null || !root.isObject()) return null;
+            // app-config.json 可能形如 {"window":{...}} 或 {"app":{"window":{...}}}
+            JsonNode scope = root.has("app") && root.get("app").isObject() ? root.get("app") : root;
+            if (scope.has("window") && scope.get("window").isObject()) {
+                scope = scope.get("window");
+            }
+            String[] keys = {"navigationBarTitleText", "navigationBarTitle", "projectname", "name", "title"};
+            for (String key : keys) {
+                JsonNode node = scope.get(key);
+                if (node != null && node.isTextual()) {
+                    String value = node.asText().trim();
+                    // 过滤模板占位符，如 {{title}}
+                    if (!value.isEmpty() && !value.startsWith("{{")) return value;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    /** 判断是小程序还是小游戏（依据解包产物中的特征文件） */
+    private String detectAppType(File dir) {
+        if (dir == null || !dir.isDirectory()) return "未知";
+        if (new File(dir, "game.js").isFile() || new File(dir, "game.json").isFile()) return "小游戏";
+        if (new File(dir, "app-service.js").isFile() || new File(dir, "app.js").isFile()
+                || new File(dir, "app.json").isFile() || new File(dir, "app-config.json").isFile()) {
+            return "小程序";
+        }
+        return "未知";
+    }
+
+    /** 统计目录下文件总数 */
+    private long countFiles(File dir) {
+        if (dir == null || !dir.isDirectory()) return 0;
+        try (java.util.stream.Stream<Path> stream = Files.walk(dir.toPath())) {
+            return stream.filter(Files::isRegularFile).count();
+        } catch (IOException e) {
+            return 0;
+        }
+    }
+
+    /** 统计目录总大小（字节） */
+    private long dirSize(File dir) {
+        if (dir == null || !dir.isDirectory()) return 0;
+        try (java.util.stream.Stream<Path> stream = Files.walk(dir.toPath())) {
+            return stream.filter(Files::isRegularFile).mapToLong(p -> {
+                try {
+                    return Files.size(p);
+                } catch (IOException e) {
+                    return 0;
+                }
+            }).sum();
+        } catch (IOException e) {
+            return 0;
+        }
+    }
+
+    private String formatSize(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
+        return String.format("%.2f MB", bytes / 1024.0 / 1024.0);
+    }
+
+    /**
      * 查询小程序信息
      */
     public Map<String, String> queryAppInfo(String appid) {
@@ -276,6 +399,8 @@ public class WxAppletDecompiler {
         result.put("userName", "");
         result.put("description", "");
         result.put("principalName", "");
+        // 网络查询接口（kainy.cn）已暂时关闭，保留代码备查；恢复时去掉注释即可
+        /*
         String url = "https://kainy.cn/api/weapp/info/";
         RequestBody body = RequestBody.create(
                 "{\"appid\":\"" + appid + "\"}",
@@ -317,6 +442,7 @@ public class WxAppletDecompiler {
         } catch (IOException e) {
             addAppInfo("警告", "查询小程序信息失败：" + e.getMessage());
         }
+        */
         return result;
     }
 
@@ -413,7 +539,7 @@ public class WxAppletDecompiler {
                 }
             });
         } catch (IOException e) {
-            addAppInfo("错误信息", "❌ 信息泄露检测失败：" + e.getMessage());
+            addAppInfo("错误信息", "信息泄露检测失败：" + e.getMessage());
         }
     }
 
@@ -445,9 +571,9 @@ public class WxAppletDecompiler {
                     return FileVisitResult.CONTINUE;
                 }
             });
-            addAppInfo("清理状态", "✅ 清除" + message + "成功！");
+            addAppInfo("清理状态", "清除" + message + "成功！");
         } catch (IOException e) {
-            addAppInfo("警告", "⚠️ 清除" + message + "失败：" + e.getMessage());
+            addAppInfo("警告", "清除" + message + "失败：" + e.getMessage());
         }
     }
 

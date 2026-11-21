@@ -1,6 +1,6 @@
 # 🔥 JaySenWxapkg - Burp微信小程序渗透测试利器
 
-> 支持微信最新版，可解**所有微信小程序wxapkg包**，一键自动解密+批量解包+API接口提取+敏感数据泄露检测+AI参数推演，Burp可视化操作，配置自动保存！
+> 支持微信最新版，可解**所有微信小程序wxapkg包**，一键自动解密+批量解包+API接口提取+敏感数据泄露检测+AI参数推演+内置MCP Server，Burp可视化操作，配置自动保存！
 
 [![GitHub 总下载量](https://img.shields.io/github/downloads/Jaysen13/jaysenwxapkg/total?label=GitHub总下载量&color=4CAF50)](https://github.com/Jaysen13/jaysenwxapkg/releases)[](https://github.com/Jaysen13/jaysenwxapkg)
 
@@ -17,6 +17,7 @@
 | 📊 可视化面板     | 小程序信息、API结果、敏感数据分栏展示，清晰直观              |
 | 📱 小程序信息查询 | 自动提取AppID，查询小程序名称、主体、描述等基础信息          |
 | 🤖 AI参数智能推测 | 结合反编译源码上下文，AI自动推测API请求参数，一键自动发送测试请求 |
+| 🧩 MCP Server     | 内置 MCP 服务，把反编译、代码检索、接口分析能力开放给 Claude Code 等 AI 客户端 |
 
 ## 🛠️ 快速上手
 
@@ -122,6 +123,45 @@ AI返回推测结果后，插件自动解析其中的HTTP请求块，直接通�
 - **命名风格学习**：AI分析同域名下已观测到的真实请求，总结开发者的命名习惯后再推测新接口
 - **自动前缀修正**：解决小程序代码中 `baseUrl` 拼接导致的路径不完整问题
 - **一键执行**：无需手动构造请求，AI推测→自动发送→结果查看一气呵成
+
+## 🧩 MCP Server
+
+插件内置了一个 MCP Server，把反编译与接口分析能力直接开放给 AI 客户端（Claude Code、Trae 等），无需手动复制代码。
+
+切换到顶部「MCP Server」标签页，可修改端口、启用/关闭服务（默认启用），并把配置一键复制到 Claude Code。
+
+![image-20261122000058155](./README.assets/image-20261122000058155.png)
+
+### 配置方式
+
+将下面的配置加入 Claude Code 的 MCP 配置文件（端口与插件中一致）：
+
+```json
+{
+  "mcpServers": {
+    "jaysenwxapkg": {
+      "url": "http://127.0.0.1:62000/sse"
+    }
+  }
+}
+```
+
+### 提供的能力
+
+| 工具 | 说明 |
+| ---- | ---- |
+| `decompile_wxapkg` | 反编译指定 wxapkg 文件或目录（自动识别加密包并解密） |
+| `list_decompiled_projects` | 列出所有已反编译的小程序项目 |
+| `list_wxapkg_files` | 扫描目录下的 wxapkg 文件 |
+| `get_decompiled_code` | 读取反编译代码（文件列表 / 单文件内容） |
+| `search_decompiled_code` | 在反编译代码中搜索关键字（支持正则） |
+| `get_wxapkg_default_path` | 查询 wxapkg 默认打开路径 |
+| `list_wxapkg_folders` | 列出默认路径下文件夹的创建/修改时间、文件数等信息 |
+| `get_api_endpoints` | 提取项目中的 API 接口列表 |
+| `get_domain_api_params` | 按域名提取接口、请求参数示例、加密方式与调用链 |
+
+> 插件卸载或关闭 Burp 时会自动停止 MCP 服务，端口随配置持久化，下次启动自动恢复。
+
 
 ## 📝 配置示例
 ### 敏感信息正则示例

@@ -30,10 +30,16 @@ public class JaySenExtension implements BurpExtension {
                                                                                          \s
                 Author: jaysen
                 Github: https://github.com/Jaysen13/jaysenwxapkg
-                Version: V2.0
+                Version: V3.0
                 """);
         // 注册标签页面
         JaySenSuiteTab jaysenSuiteTab = new JaySenSuiteTab(montoyaApi);
         montoyaApi.userInterface().registerSuiteTab("JaySenWxapkg", jaysenSuiteTab.getUiComponent());
+
+        // 插件卸载（含删除插件、关闭 Burp）时停止 MCP 服务
+        montoyaApi.extension().registerUnloadingHandler(() -> {
+            jaysenSuiteTab.shutdownMcpServer();
+            montoyaApi.logging().logToOutput("[JaySenWxapkg] 插件已卸载，MCP Server 已停止");
+        });
     }
 }

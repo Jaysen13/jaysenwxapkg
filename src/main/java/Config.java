@@ -114,6 +114,9 @@ public class Config {
         private Set<String> suffixBlacklist; // 后缀黑名单
         private Set<String> prefixBlacklist; // 前缀黑名单
         private String wxapkgPath;
+        // MCP Server配置字段（可为null，兼容旧配置文件）
+        private String mcpServerPort;    // MCP服务端口
+        private Boolean mcpServerEnabled; // MCP服务是否启用
         // AI配置字段（可为null，兼容旧配置文件）
         private String aiApiKey;
         private String aiModelUrl;
@@ -146,6 +149,10 @@ public class Config {
         public void setPrefixBlacklist(Set<String> prefixBlacklist) { this.prefixBlacklist = prefixBlacklist; }
         public String getwxapkgPath() { return wxapkgPath;}
         public void setWxapkgPath(String wxapkgPath) {this.wxapkgPath = wxapkgPath;}
+        public String getMcpServerPort() { return mcpServerPort; }
+        public void setMcpServerPort(String mcpServerPort) { this.mcpServerPort = mcpServerPort; }
+        public Boolean getMcpServerEnabled() { return mcpServerEnabled; }
+        public void setMcpServerEnabled(Boolean mcpServerEnabled) { this.mcpServerEnabled = mcpServerEnabled; }
         // AI配置 Getter/Setter
         public String getAiApiKey() { return aiApiKey; }
         public void setAiApiKey(String aiApiKey) { this.aiApiKey = aiApiKey; }
@@ -348,6 +355,44 @@ public class Config {
             return String.join(",", DEFAULT_SUFFIX_BLACKLIST);
         }
         return String.join(",", suffixSet);
+    }
+
+    // ========== MCP Server配置：保存 ==========
+    /**
+     * 保存MCP Server配置到已有配置文件（合并更新，不影响其他字段）
+     * @param port MCP服务端口
+     * @param enabled 是否启用
+     */
+    public static void saveMcpConfig(String port, boolean enabled) {
+        try {
+            String userName = System.getProperty("user.name");
+            String configPath = String.format("C:/Users/%s/.burp/jaysenwxapkg/jaysenwxapkg.json", userName);
+            File configFile = new File(configPath);
+
+            // 读取已有配置（不存在则创建默认）
+            SavedConfig config;
+            if (configFile.exists()) {
+                ObjectMapper om = new ObjectMapper();
+                config = om.readValue(configFile, SavedConfig.class);
+            } else {
+                config = loadConfigFile(); // 默认配置
+            }
+
+            // 更新MCP字段
+            config.setMcpServerPort(port);
+            config.setMcpServerEnabled(enabled);
+
+            // 写回文件（确保目录存在）
+            if (!configFile.getParentFile().exists()) {
+                configFile.getParentFile().mkdirs();
+            }
+            ObjectMapper om = new ObjectMapper();
+            om.enable(SerializationFeature.INDENT_OUTPUT);
+            String json = om.writeValueAsString(config);
+            Files.write(Paths.get(configPath), json.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            // 静默失败，不影响主流程
+        }
     }
 
     // ========== AI配置：保存 ==========
